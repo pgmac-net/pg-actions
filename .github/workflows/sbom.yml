@@ -8,7 +8,7 @@ on:
   workflow_call:
 
 jobs:
-  sbom-build-attest:
+  sbom-cdx-build-attest:
     runs-on: self-hosted
     permissions:
       id-token: write
@@ -55,6 +55,18 @@ jobs:
           show-summary: true
           push-to-registry: false
 
+  sbom-spdx-build-attest:
+    runs-on: self-hosted
+    permissions:
+      id-token: write
+      attestations: write
+      actions: read
+      contents: write
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v3
+
       - name: Build the SPDX SBoM for this directory for later grype scans
         uses: anchore/sbom-action@v0
         id: spdx-scan
@@ -99,7 +111,12 @@ jobs:
 
   sbom-scan:
     runs-on: self-hosted
-    needs: [sbom-build-attest]
+    permissions:
+      id-token: write
+      attestations: read
+      actions: read
+      contents: read
+    needs: [sbom-spdx-build-attest]
     steps:
       - name: Download a Build Artifact
         uses: actions/download-artifact@v4.1.8
