@@ -7,8 +7,6 @@ on:
   workflow_dispatch:
   workflow_call:
 
-permissions: read-all
-
 jobs:
   sbom-build-attest:
     runs-on: self-hosted
