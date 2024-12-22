@@ -34,7 +34,7 @@ jobs:
 
       - name: Upload SBoM to Dependency Track
         run: |
-          curl -kX "POST" "https://dtrack.int.pgmac.net/api/v1/bom" \
+          curl -kX "POST" "${{ secrets.DT_PROTOCOL || 'https' }}://${{ secrets.DT_HOST }}/api/v1/bom" \
           -H 'Content-Type: multipart/form-data' \
           -H "X-Api-Key: ${{ secrets.DT_APIKEY }}" \
           -F "autoCreate=true" \
