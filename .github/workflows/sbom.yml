@@ -128,7 +128,7 @@ jobs:
 
       - name: Verify the artefact attestation
         if: github.event.repository.visibility == 'public'
-        run: gh attestation verify ./sbom-spdx.json -R ${{ github.repository }}
+        run: gh attestation verify ./sbom-spdx.json --owner ${{ github.repository_owner }}
         env:
           GH_TOKEN: ${{ github.token }}
 
