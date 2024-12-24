@@ -38,7 +38,7 @@ jobs:
           -F "autoCreate=true" \
           -F "projectName=${{ github.repository }}" \
           -F "projectVersion=${{ github.sha }}" \
-          -F "projectTags=[{\"name\":\"${{ github.repository }}\"}]" \
+          -F "projectTags=[${{ github.repository }}" \
           -F "bom=@sbom.json"
 
       - name: Build the SHA256 digest
