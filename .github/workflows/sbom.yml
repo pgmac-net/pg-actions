@@ -95,7 +95,7 @@ jobs:
           push-to-registry: false
 
       - name: Scan the SPDX SBoM for vulnerabilities # The grype SBoM scan only scans SPDX format SBoMs
-        uses: anchore/scan-action@v3
+        uses: anchore/scan-action@v6
         id: scan
         with:
           sbom: sbom-spdx.json
@@ -133,7 +133,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
       - name: Scan the SBoM
-        uses: anchore/scan-action@v3
+        uses: anchore/scan-action@v6
         with:
           sbom: sbom-spdx.json
           fail-build: false # Reporting only mode for now - change to true to fail the build
