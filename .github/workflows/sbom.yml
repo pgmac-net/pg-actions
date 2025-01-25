@@ -64,7 +64,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build the CycloneDX SBoM for this directory
-        if: ${{ inputs.cyclonedx | true }} or ${{ inputs.deptrack | true }}
+        if: ${{ inputs.cyclonedx || true }} or ${{ inputs.deptrack || true }}
         uses: anchore/sbom-action@v0
         with:
           path: ./
@@ -75,7 +75,7 @@ jobs:
           dependency-snapshot: true
 
       - name: Upload SBoM to Dependency Track
-        if: ${{ inputs.deptrack | true }}
+        if: ${{ inputs.deptrack || true }}
         uses: DependencyTrack/gh-upload-sbom@v3
         with:
           serverHostname: '${{ secrets.DT_HOST }}'
@@ -87,13 +87,13 @@ jobs:
           autoCreate: true
 
       - name: Build the SHA256 digest
-        if: ${{ inputs.cyclonedx | true }} or ${{ inputs.deptrack | true }}
+        if: ${{ inputs.cyclonedx || true }} or ${{ inputs.deptrack || true }}
         id: sha256
         run: |
           echo "sha256=sha256:$(sha256sum sbom.json | cut -d ' ' -f 1)" >> $GITHUB_OUTPUT
 
       - name: Attest the SBoM
-        if: ${{ github.event.repository.visibility }} == 'public' and ( ${{ inputs.cyclonedx | true }} or ${{ inputs.deptrack | true }} )
+        if: ${{ github.event.repository.visibility }} == 'public' and ( ${{ inputs.cyclonedx || true }} or ${{ inputs.deptrack || true }} )
         uses: actions/attest-build-provenance@v2
         with:
           #subject-path: sbom.json
@@ -115,7 +115,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build the SPDX SBoM for this directory for later grype scans
-        if: ${{ inputs.spdx | true }} or ${{ inputs.ghas | false }}
+        if: ${{ inputs.spdx || true }} or ${{ inputs.ghas || false }}
         uses: anchore/sbom-action@v0
         id: spdx-scan
         with:
@@ -127,13 +127,13 @@ jobs:
           dependency-snapshot: true
 
       - name: Build the SHA256 digest
-        if: ${{ inputs.spdx | true }} or ${{ inputs.ghas | false }}
+        if: ${{ inputs.spdx || true }} or ${{ inputs.ghas || false }}
         id: spdx-sha256
         run: |
           echo "sha256=sha256:$(sha256sum sbom-spdx.json | cut -d ' ' -f 1)" >> $GITHUB_OUTPUT
 
       - name: Attest the SBoM
-        if: ${{ github.event.repository.visibility }} == 'public' and ( ${{ inputs.spdx | true }} or ${{ inputs.ghas | false }} )
+        if: ${{ github.event.repository.visibility }} == 'public' and ( ${{ inputs.spdx || true }} or ${{ inputs.ghas || false }} )
         uses: actions/attest-build-provenance@v2
         with:
           #subject-path: sbom.json
@@ -143,7 +143,7 @@ jobs:
           push-to-registry: false
 
       - name: Scan the SPDX SBoM for vulnerabilities # The grype SBoM scan only scans SPDX format SBoMs
-        if: ${{ inputs.spdx | true }} or ${{ inputs.ghas | false }}
+        if: ${{ inputs.spdx || true }} or ${{ inputs.ghas || false }}
         uses: anchore/scan-action@v6
         id: scan
         with:
@@ -154,7 +154,7 @@ jobs:
           output-format: sarif
 
       - name: Upload SPDX SBoM scan SARIF report
-        if: ${{ github.event.repository.visibility }} == 'public' and ${{ inputs.ghas | false }}
+        if: ${{ github.event.repository.visibility }} == 'public' and ${{ inputs.ghas || false }}
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: ${{ steps.scan.outputs.sarif }}
@@ -169,7 +169,7 @@ jobs:
     needs: [GHAS-scan]
     steps:
       - name: Download the SPDX SBoM Artefact
-        if: ${{ inputs.spdx | true }} or ${{ inputs.ghas | false }}
+        if: ${{ inputs.spdx || true }} or ${{ inputs.ghas || false }}
         uses: actions/download-artifact@v4.1.8
         with:
           # Name of the artifact to download. If unspecified, all artifacts for the run are downloaded.
@@ -177,13 +177,13 @@ jobs:
           merge-multiple: false
 
       - name: Verify the artefact attestation
-        if: ${{ github.event.repository.visibility }} == 'public' and ( ${{ inputs.spdx | true }} or ${{ inputs.ghas | false }} )
+        if: ${{ github.event.repository.visibility }} == 'public' and ( ${{ inputs.spdx || true }} or ${{ inputs.ghas || false }} )
         run: gh attestation verify ./sbom-spdx.json --owner ${{ github.repository_owner }}
         env:
           GH_TOKEN: ${{ github.token }}
 
       - name: Scan the SBoM
-        if: ${{ inputs.spdx | true }} or ${{ inputs.ghas | false }}
+        if: ${{ inputs.spdx || true }} or ${{ inputs.ghas || false }}
         uses: anchore/scan-action@v6
         with:
           sbom: sbom-spdx.json
