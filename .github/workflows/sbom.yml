@@ -31,15 +31,15 @@ jobs:
           dependency-snapshot: true
 
       - name: Upload SBoM to Dependency Track
-        run: |
-          curl -kX "POST" "${{ secrets.DT_PROTOCOL || 'https' }}://${{ secrets.DT_HOST }}/api/v1/bom" \
-          -H 'Content-Type: multipart/form-data' \
-          -H "X-Api-Key: ${{ secrets.DT_APIKEY }}" \
-          -F "autoCreate=true" \
-          -F "projectName=${{ github.repository }}" \
-          -F "projectVersion=${{ github.sha }}" \
-          -F "projectTags=[${{ github.repository }}" \
-          -F "bom=@sbom.json"
+        uses: DependencyTrack/gh-upload-sbom@v3
+        with:
+          serverHostname: '${{ secrets.DT_HOST }}'
+          apiKey: ${{ secrets.DT_APIKEY }}
+          projectName: ${{ github.repository }}
+          projectVersion: ${{ github.sha }}"
+          projectTags: ${{ github.repository }}
+          bomFilename: "sbom.json"
+          autoCreate: true
 
       - name: Build the SHA256 digest
         id: sha256
