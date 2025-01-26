@@ -134,6 +134,7 @@ jobs:
 
       - name: Scan the SBoM
         uses: anchore/scan-action@v3
+        id: scan-results
         with:
           sbom: sbom-spdx.json
           fail-build: false # Reporting only mode for now - change to true to fail the build
