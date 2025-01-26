@@ -8,7 +8,7 @@ on:
   workflow_call:
 
 jobs:
-  sbom-cdx-build-attest:
+  DepTrack-sbom:
     runs-on: self-hosted
     permissions:
       id-token: write
@@ -18,7 +18,7 @@ jobs:
       security-events: write
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Build the CycloneDX SBoM for this directory
         uses: anchore/sbom-action@v0
@@ -31,15 +31,15 @@ jobs:
           dependency-snapshot: true
 
       - name: Upload SBoM to Dependency Track
-        run: |
-          curl -kX "POST" "${{ secrets.DT_PROTOCOL || 'https' }}://${{ secrets.DT_HOST }}/api/v1/bom" \
-          -H 'Content-Type: multipart/form-data' \
-          -H "X-Api-Key: ${{ secrets.DT_APIKEY }}" \
-          -F "autoCreate=true" \
-          -F "projectName=${{ github.repository }}" \
-          -F "projectVersion=${{ github.sha }}" \
-          -F "projectTags=[{\"name\":\"${{ github.repository }}\"}]" \
-          -F "bom=@sbom.json"
+        uses: DependencyTrack/gh-upload-sbom@v3
+        with:
+          serverHostname: '${{ secrets.DT_HOST }}'
+          apiKey: ${{ secrets.DT_APIKEY }}
+          projectName: ${{ github.repository }}
+          projectVersion: ${{ github.sha }}"
+          projectTags: ${{ github.repository }}
+          bomFilename: "sbom.json"
+          autoCreate: true
 
       - name: Build the SHA256 digest
         id: sha256
@@ -48,7 +48,7 @@ jobs:
 
       - name: Attest the SBoM
         if: github.event.repository.visibility == 'public'
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v2
         with:
           #subject-path: sbom.json
           subject-name: sbom.json
@@ -56,7 +56,7 @@ jobs:
           show-summary: true
           push-to-registry: false
 
-  sbom-spdx-build-attest:
+  GHAS-scan:
     runs-on: self-hosted
     permissions:
       id-token: write
@@ -66,7 +66,7 @@ jobs:
       security-events: write
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Build the SPDX SBoM for this directory for later grype scans
         uses: anchore/sbom-action@v0
@@ -86,7 +86,7 @@ jobs:
 
       - name: Attest the SBoM
         if: github.event.repository.visibility == 'public'
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v2
         with:
           #subject-path: sbom.json
           subject-name: sbom-spdx.json
@@ -95,7 +95,7 @@ jobs:
           push-to-registry: false
 
       - name: Scan the SPDX SBoM for vulnerabilities # The grype SBoM scan only scans SPDX format SBoMs
-        uses: anchore/scan-action@v3
+        uses: anchore/scan-action@v6
         id: scan
         with:
           sbom: sbom-spdx.json
@@ -117,7 +117,7 @@ jobs:
       attestations: read
       actions: read
       contents: read
-    needs: [sbom-spdx-build-attest]
+    needs: [DepTrack-sbom]
     steps:
       - name: Download a Build Artifact
         uses: actions/download-artifact@v4.1.8
@@ -133,7 +133,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
       - name: Scan the SBoM
-        uses: anchore/scan-action@v3
+        uses: anchore/scan-action@v6
         id: scan-results
         with:
           sbom: sbom-spdx.json
