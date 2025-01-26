@@ -1,5 +1,17 @@
 name: SBOM Generator
 
+# This is a start on somb SBoM scanning and attestation.
+# There are 2 pieces to this right now:
+# 1. Generate a CycloneDX SBoM and upload it to Dependency Track
+# 2. Generate an SPDX SBoM and scan it with grype, uploading the results to the Security tab as a SARIF report
+
+# It's designed to be called from a workflow_dispatch or a workflow_call event, but can be triggered by a push to the main or master branch.
+# I haven't testing calling from an external organisation workflows yet, the scanning should work, but the attestation may not.
+
+# It's running on a self-hosted runner. You'll need to have one of those setup, running and tagged with 'self-hsoted' for this to work.
+
+# Because I'm using the free-tier of GitHub, I only have access to GHAS for public repositories, so the attestation is only done for public repositories.
+
 on:
   push:
     branches: ["master", "main"]
@@ -30,17 +42,6 @@ jobs:
           upload-artifact: true
           dependency-snapshot: true
 
-      - name: Upload SBoM to Dependency Track
-        uses: DependencyTrack/gh-upload-sbom@v3
-        with:
-          serverHostname: '${{ secrets.DT_HOST }}'
-          apiKey: ${{ secrets.DT_APIKEY }}
-          projectName: ${{ github.repository }}
-          projectVersion: ${{ github.sha }}"
-          projectTags: ${{ github.repository }}
-          bomFilename: "sbom.json"
-          autoCreate: true
-
       - name: Build the SHA256 digest
         id: sha256
         run: |
@@ -55,6 +56,28 @@ jobs:
           subject-digest: ${{ steps.sha256.outputs.sha256 }}
           show-summary: true
           push-to-registry: false
+
+      - name: Upload SBoM to Dependency Track
+        uses: DependencyTrack/gh-upload-sbom@v3
+        with:
+          serverhostname: "${{ secrets.DT_HOST }}"
+          apikey: ${{ secrets.DT_APIKEY }}
+          projectname: ${{ github.repository }}
+          projectversion: ${{ github.sha }}
+          projecttags: ${{ github.repository }}, ${{ github.ref_type }}, ${{ github.ref}}
+          bomfilename: "sbom.json"
+          autocreate: true
+
+      - name: Scan the SBoM
+        uses: anchore/scan-action@v6
+        id: scan-results
+        with:
+          sbom: sbom.json
+          fail-build: false # Reporting only mode for now - change to true to fail the build
+          #severity-cutoff: "medium" # Only fail the build if a vulnerability of this severity or higher is found
+          only-fixed: true # Only report vulnerabilities that have a fix available
+          output-format: table
+          # output-file: results.sarif
 
   GHAS-scan:
     runs-on: self-hosted
@@ -85,6 +108,7 @@ jobs:
           echo "sha256=sha256:$(sha256sum sbom-spdx.json | cut -d ' ' -f 1)" >> $GITHUB_OUTPUT
 
       - name: Attest the SBoM
+        # Free-tier GHAS only works on public repositories
         if: github.event.repository.visibility == 'public'
         uses: actions/attest-build-provenance@v2
         with:
@@ -105,6 +129,7 @@ jobs:
           output-format: sarif
 
       - name: Upload SPDX SBoM scan SARIF report
+        # Free-tier GHAS only works on public repositories
         if: github.event.repository.visibility == 'public'
         uses: github/codeql-action/upload-sarif@v3
         with:
