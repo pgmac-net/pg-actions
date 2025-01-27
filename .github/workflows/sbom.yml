@@ -10,7 +10,7 @@ name: SBOM Generator
 
 # It's running on a self-hosted runner. You'll need to have one of those setup, running and tagged with 'self-hsoted' for this to work.
 
-# Because I'm using the free-tier of GitHub, I only have access to GHAS for public repositories, so the attestation is only done for public repositories.
+# Because I'm using the free-tier of GitHub, I only have access to GHAS for public repositories, so the attestation and SARIF upload is only done for public repositories.
 
 on:
   push:
@@ -51,7 +51,6 @@ jobs:
         if: github.event.repository.visibility == 'public'
         uses: actions/attest-build-provenance@v2
         with:
-          #subject-path: sbom.json
           subject-name: sbom.json
           subject-digest: ${{ steps.sha256.outputs.sha256 }}
           show-summary: true
@@ -68,19 +67,9 @@ jobs:
           bomfilename: "sbom.json"
           autocreate: true
 
-      - name: Scan the SBoM
-        uses: anchore/scan-action@v6
-        id: scan-results
-        with:
-          sbom: sbom.json
-          fail-build: false # Reporting only mode for now - change to true to fail the build
-          #severity-cutoff: "medium" # Only fail the build if a vulnerability of this severity or higher is found
-          only-fixed: true # Only report vulnerabilities that have a fix available
-          output-format: table
-          # output-file: results.sarif
-
-  GHAS-scan:
+  GHAS-dependency-scan:
     runs-on: self-hosted
+    needs: [DepTrack-sbom]
     permissions:
       id-token: write
       attestations: write
@@ -91,79 +80,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build the SPDX SBoM for this directory for later grype scans
-        uses: anchore/sbom-action@v0
-        id: spdx-scan
+      - name: Download a Build Artifact
+        uses: actions/download-artifact@v4.1.8
         with:
-          path: ./
-          format: spdx-json
-          output-file: sbom-spdx.json
-          artifact-name: sbom-spdx.json
-          upload-artifact: true
-          dependency-snapshot: true
+          # Name of the artifact to download. If unspecified, all artifacts for the run are downloaded.
+          name: sbom.json
+          merge-multiple: false
 
-      - name: Build the SHA256 digest
-        id: spdx-sha256
-        run: |
-          echo "sha256=sha256:$(sha256sum sbom-spdx.json | cut -d ' ' -f 1)" >> $GITHUB_OUTPUT
-
-      - name: Attest the SBoM
-        # Free-tier GHAS only works on public repositories
+      - name: Verify the artefact attestation
         if: github.event.repository.visibility == 'public'
-        uses: actions/attest-build-provenance@v2
-        with:
-          #subject-path: sbom.json
-          subject-name: sbom-spdx.json
-          subject-digest: ${{ steps.spdx-sha256.outputs.sha256 }}
-          show-summary: true
-          push-to-registry: false
+        run: gh attestation verify ./sbom.json --owner ${{ github.repository_owner }}
+        env:
+          GH_TOKEN: ${{ github.token }}
 
-      - name: Scan the SPDX SBoM for vulnerabilities # The grype SBoM scan only scans SPDX format SBoMs
+      - name: Scan the SBoM for vulnerabilities # The grype SBoM scan only scans SPDX format SBoMs
         uses: anchore/scan-action@v6
         id: scan
         with:
-          sbom: sbom-spdx.json
+          sbom: sbom.json
           fail-build: false # Reporting only mode for now - change to true to fail the build
           #severity-cutoff: "medium" # Only fail the build if a vulnerability of this severity or higher is found
           only-fixed: true # Only report vulnerabilities that have a fix available
           output-format: sarif
 
-      - name: Upload SPDX SBoM scan SARIF report
+      - name: Upload SBoM scan SARIF report
         # Free-tier GHAS only works on public repositories
         if: github.event.repository.visibility == 'public'
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: ${{ steps.scan.outputs.sarif }}
-
-  sbom-scan:
-    runs-on: self-hosted
-    permissions:
-      id-token: write
-      attestations: read
-      actions: read
-      contents: read
-    needs: [DepTrack-sbom]
-    steps:
-      - name: Download a Build Artifact
-        uses: actions/download-artifact@v4.1.8
-        with:
-          # Name of the artifact to download. If unspecified, all artifacts for the run are downloaded.
-          name: sbom-spdx.json
-          merge-multiple: false
-
-      - name: Verify the artefact attestation
-        if: github.event.repository.visibility == 'public'
-        run: gh attestation verify ./sbom-spdx.json --owner ${{ github.repository_owner }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: Scan the SBoM
-        uses: anchore/scan-action@v6
-        id: scan-results
-        with:
-          sbom: sbom-spdx.json
-          fail-build: false # Reporting only mode for now - change to true to fail the build
-          #severity-cutoff: "medium" # Only fail the build if a vulnerability of this severity or higher is found
-          only-fixed: true # Only report vulnerabilities that have a fix available
-          output-format: table
-          # output-file: results.sarif
