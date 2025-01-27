@@ -2,8 +2,8 @@ name: SBOM Generator
 
 # This is a start on some SBoM building, scanning and attestation.
 # There are 2 pieces to this right now:
-# 1. Generate a CycloneDX SBoM and upload it to Dependency Track
-# 2. Generate an SPDX SBoM and scan it with grype, uploading the results to the Security tab as a SARIF report
+# 1. Generate a CycloneDX SBoM, make an artefact, create an attestation of said artefact and upload the SBoM to Dependency Track
+# 2. Pull the artefact back down, verify it and scan it with grype, uploading the results to the Security tab as a SARIF report
 
 # It's designed to be called from a workflow_dispatch or a workflow_call event, but can be triggered by a push to the main or master branch.
 # I haven't testing calling from an external organisation workflows yet, the scanning should work, but the attestation may not.
@@ -80,7 +80,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download a Build Artifact
+      - name: Download the SBoM Artifact
         uses: actions/download-artifact@v4.1.8
         with:
           # Name of the artifact to download. If unspecified, all artifacts for the run are downloaded.
