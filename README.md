@@ -13,11 +13,21 @@ This will:
 - Upload the SBoM as an artefact to your repo
 - Upload the SBoM to Dependency Track
 - Scan the SBoM for any known vulnerabilities in your dependencies
-- Save the results (as a SARIF file) to the Security tab of your repo
 
-A second job can:
+A second job will then:
 
 - Pull down the SBoM artefact
-- Verify the attestation
+- Verify the artefact attestation
 - Scan the SBoM for any known vulnerabilities in your dependencies
-- Output the result (as a text table) to the workflow output logs
+- Save the results (as a SARIF file) and upload to the GHAS Security tab of your repo, making the dependencies known vulnerabilities visible
+
+## What this isn't
+
+This is not a SAST of your code, or the dependencies code.
+It just scans for your dependenices (via the SBoM discovery) and maps your versions against known CVE's.
+
+This is not a version upgrading tool
+Other tools are better for that.
+EG:
+* DependaBot
+* RenovateBot (You may notice some renovatebot stuff in here)
