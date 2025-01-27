@@ -1,6 +1,6 @@
 name: SBOM Generator
 
-# This is a start on somb SBoM scanning and attestation.
+# This is a start on some SBoM building, scanning and attestation.
 # There are 2 pieces to this right now:
 # 1. Generate a CycloneDX SBoM and upload it to Dependency Track
 # 2. Generate an SPDX SBoM and scan it with grype, uploading the results to the Security tab as a SARIF report
