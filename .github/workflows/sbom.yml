@@ -30,7 +30,7 @@ jobs:
       security-events: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build the CycloneDX SBoM for this directory
         uses: anchore/sbom-action@v0
@@ -78,7 +78,7 @@ jobs:
       security-events: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download the SBoM Artifact
         uses: actions/download-artifact@v5.0.0
