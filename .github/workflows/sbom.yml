@@ -21,6 +21,7 @@ on:
 
 jobs:
   DepTrack-sbom:
+    runs-on: [self-hosted, pgmac-slack-scores]
     permissions:
       id-token: write
       attestations: write
@@ -68,6 +69,7 @@ jobs:
           autocreate: true
 
   GHAS-dependency-scan:
+    runs-on: [self-hosted, pgmac-slack-scores]
     needs: [DepTrack-sbom]
     permissions:
       id-token: write
