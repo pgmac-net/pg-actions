@@ -17,11 +17,31 @@ on:
     branches: ["master", "main"]
 
   workflow_dispatch:
+    inputs:
+      runs-on:
+        description: 'Runner to use for the job'
+        required: false
+        type: choice  # Optional: use 'choice' for dropdown in UI
+        options:
+          - self-hosted
+          - pgmac-slack-scores
+        default: 'self-hosted'
   workflow_call:
+    inputs:
+      runs-on:
+        description: 'Runner to use for the job'
+        required: false
+        type: string
+        default: 'self-hosted'
+    secrets:
+      DT_HOST:
+        required: true
+      DT_APIKEY:
+        required: true
 
 jobs:
   DepTrack-sbom:
-    runs-on: ${{ inputs.runs-on || "self-hosted" }}
+    runs-on: ${{ inputs.runs-on || 'self-hosted' }}
     permissions:
       id-token: write
       attestations: write
@@ -69,7 +89,7 @@ jobs:
           autocreate: true
 
   GHAS-dependency-scan:
-    runs-on: ${{ inputs.runs-on || "self-hosted" }}
+    runs-on: ${{ inputs.runs-on || 'self-hosted' }}
     needs: [DepTrack-sbom]
     permissions:
       id-token: write
