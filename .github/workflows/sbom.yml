@@ -33,11 +33,6 @@ on:
         required: false
         type: string
         default: 'self-hosted'
-    secrets:
-      DT_HOST:
-        required: true
-      DT_APIKEY:
-        required: true
 
 jobs:
   DepTrack-sbom:
