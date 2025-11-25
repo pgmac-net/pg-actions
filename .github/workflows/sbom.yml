@@ -46,7 +46,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
-      - uses: actions4gh/setup-gh@v1
 
       - name: Build the CycloneDX SBoM for this directory
         uses: anchore/sbom-action@v0
