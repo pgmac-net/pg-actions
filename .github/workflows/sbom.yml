@@ -15,24 +15,25 @@ name: SBOM Generator
 on:
   push:
     branches: ["master", "main"]
+  pull_request: # Add this for PR validation
+    types: [opened, synchronize]
 
   workflow_dispatch:
     inputs:
       runs-on:
-        description: 'Runner to use for the job'
+        description: "Runner to use for the job"
         required: false
-        type: choice  # Optional: use 'choice' for dropdown in UI
+        type: choice # Optional: use 'choice' for dropdown in UI
         options:
           - self-hosted
-          - pgmac-slack-scores
-        default: 'self-hosted'
+        default: "self-hosted"
   workflow_call:
     inputs:
       runs-on:
-        description: 'Runner to use for the job'
+        description: "Runner to use for the job"
         required: false
         type: string
-        default: 'self-hosted'
+        default: "self-hosted"
     secrets:
       DT_HOST:
         required: true
@@ -42,6 +43,7 @@ on:
 jobs:
   DepTrack-sbom:
     runs-on: ${{ inputs.runs-on || 'self-hosted' }}
+    timeout-minutes: 3
     permissions:
       id-token: write
       attestations: write
@@ -109,7 +111,13 @@ jobs:
 
       - name: Verify the artefact attestation
         if: github.event.repository.visibility == 'public'
-        run: gh attestation verify ./sbom.json --owner ${{ github.repository_owner }}
+        run: |
+          gh attestation verify ./sbom.json --owner ${{ github.repository_owner }}
+          # Add integrity check
+          if [ "$(sha256sum sbom.json | cut -d ' ' -f 1)" != "${{ steps.sha256.outputs.sha256 }}" ]; then
+            echo "SBOM integrity check failed!"
+            exit 1
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -122,6 +130,56 @@ jobs:
           #severity-cutoff: "medium" # Only fail the build if a vulnerability of this severity or higher is found
           only-fixed: true # Only report vulnerabilities that have a fix available
           output-format: sarif
+
+      - name: Parse SARIF and create comment
+        id: comment
+        run: |
+          # Extract vulnerability information from SARIF
+          TOTAL=$(jq -r '.runResults[0].results | length' ${{ steps.scan.outputs.sarif }} 2>/dev/null || echo "0")
+
+          # Parse severity levels
+          CRITICAL=$(jq -r '.runResults[0].results[] | select(.level == "error") | .level' ${{ steps.scan.outputs.sarif }} 2>/dev/null | wc -l | tr -d ' ')
+          HIGH=$(jq -r '.runResults[0].results[] | select(.level == "warning") | .level' ${{ steps.scan.outputs.sarif }} 2>/dev/null | wc -l | tr -d ' ')
+          MEDIUM=$(jq -r '.runResults[0].results[] | select(.level == "note") | .level' ${{ steps.scan.outputs.sarif }} 2>/dev/null | wc -l | tr -d ' ')
+
+          # Generate comment body
+          echo "comment_body<<EOF" >> $GITHUB_OUTPUT
+          echo "## 🛡️ SBoM Vulnerability Scan Results" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "**Scan Summary:**" >> $GITHUB_OUTPUT
+          echo "- **Total vulnerabilities found:** \`${TOTAL}\`" >> $GITHUB_OUTPUT
+          echo "- **Critical:** \`${CRITICAL}\`" >> $GITHUB_OUTPUT
+          echo "- **High:** \`${HIGH}\`" >> $GITHUB_OUTPUT
+          echo "- **Medium:** \`${MEDIUM}\`" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "**SBoM Details:**" >> $GITHUB_OUTPUT
+          echo "- Generated from commit: \`${{ github.event.pull_request.head.sha }}\`" >> $GITHUB_OUTPUT
+          echo "- SBoM format: CycloneDX" >> $GITHUB_OUTPUT
+          echo "- Repository: \`${{ github.repository }}\`" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "📋 [View full SARIF report](https://github.com/${{ github.repository }}/security/code-scanning)" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "> ⚠️ This comment will be updated on each commit" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Find existing comment
+        id: find-comment
+        run: |
+          echo "comment_id=$(gh pr view ${{ github.event.pull_request.number }} --json comments --jq '.comments[] | select(.body | contains("SBoM Vulnerability Scan Results")) | .id' | head -n1)" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Create or update comment
+        run: |
+          if [ -n "${{ steps.find-comment.outputs.comment_id }}" ]; then
+            echo "Updating existing comment"
+            gh pr edit ${{ github.event.pull_request.number }} --comment-id ${{ steps.find-comment.outputs.comment_id }} --body "${{ steps.comment.outputs.comment_body }}"
+          else
+            echo "Creating new comment"
+            gh pr comment ${{ github.event.pull_request.number }} --body "${{ steps.comment.outputs.comment_body }}"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Upload SBoM scan SARIF report
         # Free-tier GHAS only works on public repositories
