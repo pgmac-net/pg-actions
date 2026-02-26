@@ -69,7 +69,7 @@ jobs:
 
       - name: Attest the SBoM
         if: github.event.repository.visibility == 'public'
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: sbom.json
           subject-digest: ${{ steps.sha256.outputs.sha256 }}
