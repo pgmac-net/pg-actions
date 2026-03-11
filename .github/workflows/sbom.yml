@@ -101,7 +101,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Download the SBoM Artifact
-        uses: actions/download-artifact@v8.0.0
+        uses: actions/download-artifact@v8.0.1
         with:
           # Name of the artifact to download. If unspecified, all artifacts for the run are downloaded.
           name: sbom.json
