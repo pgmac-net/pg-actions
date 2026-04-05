@@ -132,12 +132,11 @@ jobs:
           only-fixed: true # Only report vulnerabilities that have a fix available
           output-format: sarif
 
-      - name: Parse SARIF and create comment
+      - name: Parse SARIF results
         id: comment
-        if: github.event_name == 'pull_request'
         env:
           SARIF_FILE: ${{ steps.scan.outputs.sarif }}
-          PR_SHA: ${{ github.event.pull_request.head.sha }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           REPO: ${{ github.repository }}
         run: |
           TOTAL=$(jq -r '.runs[0].results | length' "${SARIF_FILE}" 2>/dev/null || echo "0")
@@ -146,7 +145,7 @@ jobs:
           MEDIUM=$(jq -r '.runs[0].results[] | select(.level == "note") | .level' "${SARIF_FILE}" 2>/dev/null | wc -l | tr -d ' ')
 
           # Write to file to avoid backtick interpretation in shell
-          cat > /tmp/pr-comment-body.md <<COMMENT
+          cat > /tmp/scan-results.md <<RESULTS
           ## SBoM Vulnerability Scan Results
 
           **Scan Summary:**
@@ -156,14 +155,17 @@ jobs:
           - **Medium:** ${MEDIUM}
 
           **SBoM Details:**
-          - Generated from commit: ${PR_SHA}
+          - Generated from commit: ${SHA}
           - SBoM format: CycloneDX
           - Repository: ${REPO}
 
           [View full SARIF report](https://github.com/${REPO}/security/code-scanning)
 
           > This comment will be updated on each commit
-          COMMENT
+          RESULTS
+
+      - name: Add results to job summary
+        run: cat /tmp/scan-results.md >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Find existing comment
         id: find-comment
@@ -185,10 +187,10 @@ jobs:
           if [ -n "${COMMENT_ID}" ]; then
             echo "Updating existing comment"
             gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
-              --method PATCH --field body="$(cat /tmp/pr-comment-body.md)"
+              --method PATCH --field body="$(cat /tmp/scan-results.md)"
           else
             echo "Creating new comment"
-            gh pr comment "${PR_NUMBER}" --body-file /tmp/pr-comment-body.md
+            gh pr comment "${PR_NUMBER}" --body-file /tmp/scan-results.md
           fi
 
       - name: Upload SBoM scan SARIF report
