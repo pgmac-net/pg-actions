@@ -133,53 +133,62 @@ jobs:
 
       - name: Parse SARIF and create comment
         id: comment
+        if: github.event_name == 'pull_request'
+        env:
+          SARIF_FILE: ${{ steps.scan.outputs.sarif }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
         run: |
-          # Extract vulnerability information from SARIF
-          TOTAL=$(jq -r '.runResults[0].results | length' ${{ steps.scan.outputs.sarif }} 2>/dev/null || echo "0")
+          TOTAL=$(jq -r '.runs[0].results | length' "${SARIF_FILE}" 2>/dev/null || echo "0")
+          CRITICAL=$(jq -r '.runs[0].results[] | select(.level == "error") | .level' "${SARIF_FILE}" 2>/dev/null | wc -l | tr -d ' ')
+          HIGH=$(jq -r '.runs[0].results[] | select(.level == "warning") | .level' "${SARIF_FILE}" 2>/dev/null | wc -l | tr -d ' ')
+          MEDIUM=$(jq -r '.runs[0].results[] | select(.level == "note") | .level' "${SARIF_FILE}" 2>/dev/null | wc -l | tr -d ' ')
 
-          # Parse severity levels
-          CRITICAL=$(jq -r '.runResults[0].results[] | select(.level == "error") | .level' ${{ steps.scan.outputs.sarif }} 2>/dev/null | wc -l | tr -d ' ')
-          HIGH=$(jq -r '.runResults[0].results[] | select(.level == "warning") | .level' ${{ steps.scan.outputs.sarif }} 2>/dev/null | wc -l | tr -d ' ')
-          MEDIUM=$(jq -r '.runResults[0].results[] | select(.level == "note") | .level' ${{ steps.scan.outputs.sarif }} 2>/dev/null | wc -l | tr -d ' ')
+          # Write to file to avoid backtick interpretation in shell
+          cat > /tmp/pr-comment-body.md <<COMMENT
+          ## SBoM Vulnerability Scan Results
 
-          # Generate comment body
-          echo "comment_body<<EOF" >> $GITHUB_OUTPUT
-          echo "## 🛡️ SBoM Vulnerability Scan Results" >> $GITHUB_OUTPUT
-          echo "" >> $GITHUB_OUTPUT
-          echo "**Scan Summary:**" >> $GITHUB_OUTPUT
-          echo "- **Total vulnerabilities found:** \`${TOTAL}\`" >> $GITHUB_OUTPUT
-          echo "- **Critical:** \`${CRITICAL}\`" >> $GITHUB_OUTPUT
-          echo "- **High:** \`${HIGH}\`" >> $GITHUB_OUTPUT
-          echo "- **Medium:** \`${MEDIUM}\`" >> $GITHUB_OUTPUT
-          echo "" >> $GITHUB_OUTPUT
-          echo "**SBoM Details:**" >> $GITHUB_OUTPUT
-          echo "- Generated from commit: \`${{ github.event.pull_request.head.sha }}\`" >> $GITHUB_OUTPUT
-          echo "- SBoM format: CycloneDX" >> $GITHUB_OUTPUT
-          echo "- Repository: \`${{ github.repository }}\`" >> $GITHUB_OUTPUT
-          echo "" >> $GITHUB_OUTPUT
-          echo "📋 [View full SARIF report](https://github.com/${{ github.repository }}/security/code-scanning)" >> $GITHUB_OUTPUT
-          echo "" >> $GITHUB_OUTPUT
-          echo "> ⚠️ This comment will be updated on each commit" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          **Scan Summary:**
+          - **Total vulnerabilities found:** ${TOTAL}
+          - **Critical:** ${CRITICAL}
+          - **High:** ${HIGH}
+          - **Medium:** ${MEDIUM}
+
+          **SBoM Details:**
+          - Generated from commit: ${PR_SHA}
+          - SBoM format: CycloneDX
+          - Repository: ${REPO}
+
+          [View full SARIF report](https://github.com/${REPO}/security/code-scanning)
+
+          > This comment will be updated on each commit
+          COMMENT
 
       - name: Find existing comment
         id: find-comment
-        run: |
-          echo "comment_id=$(gh pr view ${{ github.event.pull_request.number }} --json comments --jq '.comments[] | select(.body | contains("SBoM Vulnerability Scan Results")) | .id' | head -n1)" >> $GITHUB_OUTPUT
+        if: github.event_name == 'pull_request'
         env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "comment_id=$(gh pr view "${PR_NUMBER}" --json comments --jq '.comments[] | select(.body | contains("SBoM Vulnerability Scan Results")) | .id' | head -n1)" >> $GITHUB_OUTPUT
 
       - name: Create or update comment
+        if: github.event_name == 'pull_request'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          COMMENT_ID: ${{ steps.find-comment.outputs.comment_id }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [ -n "${{ steps.find-comment.outputs.comment_id }}" ]; then
+          if [ -n "${COMMENT_ID}" ]; then
             echo "Updating existing comment"
-            gh pr edit ${{ github.event.pull_request.number }} --comment-id ${{ steps.find-comment.outputs.comment_id }} --body "${{ steps.comment.outputs.comment_body }}"
+            gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
+              --method PATCH --field body="$(cat /tmp/pr-comment-body.md)"
           else
             echo "Creating new comment"
-            gh pr comment ${{ github.event.pull_request.number }} --body "${{ steps.comment.outputs.comment_body }}"
+            gh pr comment "${PR_NUMBER}" --body-file /tmp/pr-comment-body.md
           fi
-        env:
-          GH_TOKEN: ${{ github.token }}
 
       - name: Upload SBoM scan SARIF report
         # Free-tier GHAS only works on public repositories

@@ -1,3 +1,6 @@
+[settings]
+lockfile = true
+
 [tools]
 gh = "2.89.0"
 grype = "0.110.0"
