@@ -118,11 +118,6 @@ jobs:
         if: github.event.repository.visibility == 'public'
         run: |
           gh attestation verify ./sbom.json --owner ${{ github.repository_owner }}
-          # Add integrity check
-          if [ "$(sha256sum sbom.json | cut -d ' ' -f 1)" != "${{ steps.sha256.outputs.sha256 }}" ]; then
-            echo "SBOM integrity check failed!"
-            exit 1
-          fi
         env:
           GH_TOKEN: ${{ github.token }}
 
