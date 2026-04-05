@@ -12,6 +12,8 @@ name: SBOM Generator
 
 # Because I'm using the free-tier of GitHub, I only have access to GHAS for public repositories, so the attestation and SARIF upload is only done for public repositories.
 
+# To do attestations, we need the gh cli tool. The easiest/fastest way to install this is with mise-en-place
+
 on:
   push:
     branches: ["master", "main"]
