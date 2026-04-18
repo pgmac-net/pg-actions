@@ -1,0 +1,85 @@
+name: Slack Notify Start
+
+on:
+  workflow_call:
+    inputs:
+      channel:
+        description: Slack channel ID to post to
+        required: false
+        type: string
+        default: C01UGQ98P9U
+    secrets:
+      SLACK_BOT_TOKEN:
+        required: true
+    outputs:
+      ts:
+        description: Slack message timestamp (pass to slack-notify-end to update the message)
+        value: ${{ jobs.notify.outputs.ts }}
+      start:
+        description: Job start time as epoch seconds (pass to slack-notify-end for runtime calculation)
+        value: ${{ jobs.notify.outputs.start }}
+      startfmt:
+        description: Job start time formatted as ISO-8601 (pass to slack-notify-end for display)
+        value: ${{ jobs.notify.outputs.startfmt }}
+
+jobs:
+  notify:
+    runs-on: self-hosted
+    outputs:
+      ts: ${{ steps.slack.outputs.ts }}
+      start: ${{ steps.jobstart.outputs.start }}
+      startfmt: ${{ steps.jobstart.outputs.startfmt }}
+
+    steps:
+      - name: Get start time
+        id: jobstart
+        run: |
+          echo "start=$(date +%s)" >> $GITHUB_OUTPUT
+          echo "startfmt=$(date --iso-8601=minutes)" >> $GITHUB_OUTPUT
+
+      - name: Send Slack message
+        id: slack
+        uses: slackapi/slack-github-action@v3.0.1
+        continue-on-error: true
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            {
+              "channel": "${{ inputs.channel }}",
+              "attachments": [
+                {
+                  "mrkdwn_in": ["text", "pretext"],
+                  "fallback": ${{ toJSON(join(github.event.commits.*.message, '<br>') || ':clock6: Scheduled') }},
+                  "color": "grey",
+                  "pretext": ":checkered_flag: ${{ github.workflow }} (${{ github.ref_name }}) #${{ github.run_number }}",
+                  "author_name": "${{ github.triggering_actor || github.actor }}",
+                  "title": "${{ github.workflow }}",
+                  "title_link": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                  "text": ${{ toJSON(join(github.event.commits.*.message, '\n') || ':clock6: Scheduled') }},
+                  "fields": [
+                    {
+                      "title": "Status",
+                      "short": true,
+                      "value": "In Progress"
+                    },
+                    {
+                      "title": "Start",
+                      "short": true,
+                      "value": "${{ steps.jobstart.outputs.startfmt }}"
+                    }
+                  ]
+                },
+                {
+                  "blocks": [
+                    {
+                      "type": "section",
+                      "text": {
+                        "type": "mrkdwn",
+                        "text": "<${{ github.event.pull_request.html_url || github.event.head_commit.url || github.server_url }}|View commit>"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }

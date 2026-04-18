@@ -1,0 +1,132 @@
+name: Slack Notify End
+
+on:
+  workflow_call:
+    inputs:
+      channel:
+        description: Slack channel ID to post to
+        required: false
+        type: string
+        default: C01UGQ98P9U
+      ts:
+        description: Slack message timestamp from slack-notify-start output
+        required: true
+        type: string
+      start:
+        description: Job start time as epoch seconds from slack-notify-start output
+        required: true
+        type: string
+      startfmt:
+        description: Job start time formatted as ISO-8601 from slack-notify-start output
+        required: true
+        type: string
+      status:
+        description: Overall job status — success, failure, or cancelled
+        required: true
+        type: string
+    secrets:
+      SLACK_BOT_TOKEN:
+        required: true
+
+jobs:
+  notify:
+    runs-on: self-hosted
+
+    steps:
+      - name: Get end time
+        if: always()
+        run: |
+          echo "end=$(date +%s)" >> $GITHUB_ENV
+          echo "endfmt=$(date --iso-8601=minutes)" >> $GITHUB_ENV
+
+      - name: Get runtime difference
+        if: always()
+        env:
+          START: ${{ inputs.start }}
+        run: echo "timediff=$(( ($end - $START)/60 )) minutes\n$(( ($end - $START)%60 )) seconds" >> $GITHUB_ENV
+
+      - name: Set status variables
+        if: always()
+        env:
+          STATUS: ${{ inputs.status }}
+        run: |
+          case "$STATUS" in
+            success)
+              echo "colour=good" >> $GITHUB_ENV
+              echo "status=Completed" >> $GITHUB_ENV
+              echo "icon=✅" >> $GITHUB_ENV
+              ;;
+            failure)
+              echo "colour=danger" >> $GITHUB_ENV
+              echo "status=Failed" >> $GITHUB_ENV
+              echo "icon=🛑" >> $GITHUB_ENV
+              ;;
+            cancelled)
+              echo "colour=warning" >> $GITHUB_ENV
+              echo "status=Cancelled" >> $GITHUB_ENV
+              echo "icon=⚠" >> $GITHUB_ENV
+              ;;
+            *)
+              echo "colour=grey" >> $GITHUB_ENV
+              echo "status=Unknown" >> $GITHUB_ENV
+              echo "icon=❓" >> $GITHUB_ENV
+              ;;
+          esac
+
+      - name: Send Slack message
+        if: always()
+        uses: slackapi/slack-github-action@v3.0.1
+        continue-on-error: true
+        with:
+          method: chat.update
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            {
+              "channel": "${{ inputs.channel }}",
+              "ts": "${{ inputs.ts }}",
+              "attachments": [
+                {
+                  "mrkdwn_in": ["text", "pretext"],
+                  "fallback": ${{ toJSON(join(github.event.commits.*.message, '<br>') || ':clock6: Scheduled') }},
+                  "color": "${{ env.colour }}",
+                  "pretext": "${{ env.icon }} ${{ github.workflow }} (${{ github.ref_name }}) #${{ github.run_number }}",
+                  "author_name": "${{ github.triggering_actor || github.actor }}",
+                  "title": "${{ github.workflow }}",
+                  "title_link": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                  "text": ${{ toJSON(join(github.event.commits.*.message, '\n') || ':clock6: Scheduled') }},
+                  "fields": [
+                    {
+                      "title": "Status",
+                      "short": true,
+                      "value": "${{ env.status }}"
+                    },
+                    {
+                      "title": "Start",
+                      "short": true,
+                      "value": "${{ inputs.startfmt }}"
+                    },
+                    {
+                      "title": "Run time",
+                      "short": true,
+                      "value": "${{ env.timediff }}"
+                    },
+                    {
+                      "title": "End",
+                      "short": true,
+                      "value": "${{ env.endfmt }}"
+                    }
+                  ]
+                },
+                {
+                  "blocks": [
+                    {
+                      "type": "section",
+                      "text": {
+                        "type": "mrkdwn",
+                        "text": "<${{ github.event.pull_request.html_url || github.event.head_commit.url || github.server_url }}|View commit>"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
