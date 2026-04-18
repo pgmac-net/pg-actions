@@ -37,7 +37,7 @@ Posts an initial "In Progress" Slack message via `chat.postMessage` and outputs 
 ```yaml
 jobs:
   slack-start:
-    uses: pgmac/pg-actions/.github/workflows/slack-notify-start.yml@main
+    uses: pgmac-net/pg-actions/.github/workflows/slack-notify-start.yml@main
     secrets: inherit
 
   run:
@@ -49,7 +49,7 @@ jobs:
   slack-end:
     if: always()
     needs: [slack-start, run]
-    uses: pgmac/pg-actions/.github/workflows/slack-notify-end.yml@main
+    uses: pgmac-net/pg-actions/.github/workflows/slack-notify-end.yml@main
     with:
       ts: ${{ needs.slack-start.outputs.ts }}
       start: ${{ needs.slack-start.outputs.start }}
@@ -64,7 +64,7 @@ For multi-job workflows where you want the overall status to reflect several par
   slack-end:
     if: always()
     needs: [slack-start, job-a, job-b, job-c]
-    uses: pgmac/pg-actions/.github/workflows/slack-notify-end.yml@main
+    uses: pgmac-net/pg-actions/.github/workflows/slack-notify-end.yml@main
     with:
       ts: ${{ needs.slack-start.outputs.ts }}
       start: ${{ needs.slack-start.outputs.start }}
