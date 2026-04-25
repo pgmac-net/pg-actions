@@ -1,0 +1,61 @@
+name: OpenSSF Scorecard (public)
+
+# Reusable workflow for public repositories.
+# Runs the OpenSSF Scorecard checks and uploads results as an artifact and
+# to the GitHub Security tab (SARIF). Results are NOT published to the OpenSSF
+# public API (publish_results: false).
+
+on:
+  push:
+    branches: ["main", "master"]
+  schedule:
+    - cron: "0 14 * * 0" # 00:00 AEST every Sunday
+  workflow_dispatch:
+    inputs:
+      runs-on:
+        description: "Runner to use for the job"
+        required: false
+        type: choice
+        options:
+          - self-hosted
+        default: "self-hosted"
+  workflow_call:
+    inputs:
+      runs-on:
+        description: "Runner to use for the job"
+        required: false
+        type: string
+        default: "self-hosted"
+
+jobs:
+  scorecard:
+    name: Scorecard analysis
+    runs-on: ${{ inputs.runs-on || 'self-hosted' }}
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run OpenSSF Scorecard
+        uses: ossf/scorecard-action@v2
+        with:
+          results_file: scorecard-results.sarif
+          results_format: sarif
+          publish_results: false
+
+      - name: Upload SARIF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scorecard-results
+          path: scorecard-results.sarif
+          retention-days: 30
+
+      - name: Upload SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: scorecard-results.sarif

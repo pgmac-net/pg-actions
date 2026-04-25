@@ -104,6 +104,71 @@ Updates the Slack message posted by `slack-notify-start` with the final status, 
 
 ---
 
+# OpenSSF Scorecard
+
+Two reusable workflows that run [OpenSSF Scorecard](https://scorecard.dev/) security checks against your repository. Results are kept local — nothing is published to the OpenSSF public API.
+
+## scorecard-public
+
+For **public** repositories. Runs the full Scorecard check suite, uploads results as an artifact, and uploads the SARIF report to the GitHub Security tab.
+
+Also runs automatically on push to `main`/`master` and on a weekly schedule (Sunday midnight AEST) when used directly in `pg-actions`.
+
+### Inputs
+
+| Name | Required | Default | Description |
+|------|----------|---------|-------------|
+| `runs-on` | No | `self-hosted` | Runner label |
+
+### Permissions required in caller
+
+```yaml
+permissions:
+  security-events: write
+  contents: read
+  actions: read
+```
+
+### Usage
+
+```yaml
+jobs:
+  scorecard:
+    uses: pgmac-net/pg-actions/.github/workflows/scorecard-public.yml@main
+```
+
+---
+
+## scorecard-private
+
+For **private** repositories. Runs Scorecard checks and uploads results as an artifact only. The GitHub Security tab upload is skipped (GHAS code scanning requires a paid plan for private repos).
+
+Only callable via `workflow_call` — no standalone schedule trigger.
+
+### Inputs
+
+| Name | Required | Default | Description |
+|------|----------|---------|-------------|
+| `runs-on` | No | `self-hosted` | Runner label |
+
+### Permissions required in caller
+
+```yaml
+permissions:
+  contents: read
+  actions: read
+```
+
+### Usage
+
+```yaml
+jobs:
+  scorecard:
+    uses: pgmac-net/pg-actions/.github/workflows/scorecard-private.yml@main
+```
+
+---
+
 # sbom
 
 This will:
