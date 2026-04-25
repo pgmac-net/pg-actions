@@ -2,6 +2,6 @@
 lockfile = true
 
 [tools]
-gh = "2.89.0"
+gh = "2.90.0"
 grype = "0.110.0"
 syft = "1.42.3"
