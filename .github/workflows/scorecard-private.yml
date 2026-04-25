@@ -1,0 +1,42 @@
+name: OpenSSF Scorecard (private)
+
+# Reusable workflow for private repositories.
+# Runs the OpenSSF Scorecard checks and uploads results as an artifact only.
+# Results are NOT published to the OpenSSF public API or the GitHub Security tab
+# (GHAS code scanning is a paid feature for private repos on free-tier GitHub).
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: "Runner to use for the job"
+        required: false
+        type: string
+        default: "self-hosted"
+
+jobs:
+  scorecard:
+    name: Scorecard analysis
+    runs-on: ${{ inputs.runs-on || 'self-hosted' }}
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run OpenSSF Scorecard
+        uses: ossf/scorecard-action@v2
+        with:
+          results_file: scorecard-results.sarif
+          results_format: sarif
+          publish_results: false
+
+      - name: Upload SARIF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scorecard-results
+          path: scorecard-results.sarif
+          retention-days: 30
