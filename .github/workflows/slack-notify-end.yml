@@ -75,7 +75,7 @@ jobs:
 
       - name: Send Slack message
         if: always()
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         continue-on-error: true
         with:
           method: chat.update
