@@ -25,6 +25,8 @@ on:
 jobs:
   notify:
     runs-on: self-hosted
+    container:
+      image: ubuntu:24.04
     outputs:
       ts: ${{ steps.slack.outputs.ts }}
       start: ${{ steps.jobstart.outputs.start }}
