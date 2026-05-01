@@ -31,6 +31,8 @@ on:
 jobs:
   notify:
     runs-on: self-hosted
+    container:
+      image: ubuntu:24.04
 
     steps:
       - name: Get end time
