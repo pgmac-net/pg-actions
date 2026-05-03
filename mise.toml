@@ -5,3 +5,4 @@ lockfile = true
 gh = "2.91.0"
 grype = "0.110.0"
 syft = "1.42.3"
+zizmor = "1.24.1"
