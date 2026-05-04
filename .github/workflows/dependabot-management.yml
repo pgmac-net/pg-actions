@@ -1,0 +1,335 @@
+name: Dependabot Vulnerability Management
+
+on:
+  workflow_call:
+    inputs:
+      alert_number:
+        description: Dependabot alert number
+        required: true
+        type: number
+      package_name:
+        description: Vulnerable package name
+        required: true
+        type: string
+      package_ecosystem:
+        description: Package ecosystem (npm, pip, maven, etc.)
+        required: true
+        type: string
+      severity:
+        description: Vulnerability severity (critical, high, medium, low)
+        required: true
+        type: string
+      summary:
+        description: Vulnerability summary
+        required: true
+        type: string
+      cve_id:
+        description: CVE ID if available
+        required: false
+        type: string
+        default: ""
+      ghsa_id:
+        description: GitHub Security Advisory ID
+        required: true
+        type: string
+      vulnerable_version_range:
+        description: Affected version range
+        required: true
+        type: string
+      first_patched_version:
+        description: First version that contains the fix
+        required: false
+        type: string
+        default: ""
+    secrets:
+      LINEAR_API_KEY:
+        required: true
+      ANTHROPIC_API_KEY:
+        required: false
+
+jobs:
+  create-linear-ticket:
+    name: Create Linear Ticket
+    runs-on: self-hosted
+    outputs:
+      ticket_identifier: ${{ steps.create-ticket.outputs.ticket_identifier || steps.check-existing.outputs.ticket_identifier }}
+      ticket_url: ${{ steps.create-ticket.outputs.ticket_url || steps.check-existing.outputs.ticket_url }}
+    steps:
+      - name: Check for existing ticket
+        id: check-existing
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          GHSA_ID: ${{ inputs.ghsa_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          PAYLOAD=$(jq -n \
+            --arg ghsa "$GHSA_ID" \
+            --arg repo "$REPO" \
+            '{
+              query: "query FindIssue($filter: IssueFilter) { issues(filter: $filter) { nodes { id identifier url } } }",
+              variables: {
+                filter: {
+                  team: { id: { eq: "0b2f2134-ef52-46dc-9fef-71d77d89aca9" } },
+                  and: [
+                    { title: { containsIgnoreCase: $ghsa } },
+                    { title: { containsIgnoreCase: $repo } }
+                  ]
+                }
+              }
+            }')
+
+          RESPONSE=$(curl -s -X POST https://api.linear.app/graphql \
+            -H "Authorization: ${LINEAR_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+
+          COUNT=$(echo "$RESPONSE" | jq '.data.issues.nodes | length')
+          if [ "${COUNT}" -gt "0" ]; then
+            IDENTIFIER=$(echo "$RESPONSE" | jq -r '.data.issues.nodes[0].identifier')
+            URL=$(echo "$RESPONSE" | jq -r '.data.issues.nodes[0].url')
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "ticket_identifier=${IDENTIFIER}" >> "$GITHUB_OUTPUT"
+            echo "ticket_url=${URL}" >> "$GITHUB_OUTPUT"
+            echo "Existing ticket found: ${IDENTIFIER}"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "No existing ticket for ${GHSA_ID} in ${REPO}"
+          fi
+
+      - name: Create ticket
+        id: create-ticket
+        if: steps.check-existing.outputs.exists != 'true'
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          GHSA_ID: ${{ inputs.ghsa_id }}
+          REPO: ${{ github.repository }}
+          PACKAGE_NAME: ${{ inputs.package_name }}
+          PACKAGE_ECOSYSTEM: ${{ inputs.package_ecosystem }}
+          SEVERITY: ${{ inputs.severity }}
+          SUMMARY: ${{ inputs.summary }}
+          CVE_ID: ${{ inputs.cve_id }}
+          VULN_RANGE: ${{ inputs.vulnerable_version_range }}
+          PATCHED_VERSION: ${{ inputs.first_patched_version }}
+          ALERT_NUMBER: ${{ inputs.alert_number }}
+        run: |
+          case "$SEVERITY" in
+            critical) PRIORITY=1 ;;
+            high)     PRIORITY=2 ;;
+            *)        PRIORITY=3 ;;
+          esac
+
+          ALERT_URL="https://github.com/${REPO}/security/dependabot/${ALERT_NUMBER}"
+          CVE_TEXT="${CVE_ID:-N/A}"
+          PATCHED_TEXT="${PATCHED_VERSION:-None available}"
+
+          DESCRIPTION="## Dependabot Security Alert
+
+**Repository:** ${REPO}
+**Package:** ${PACKAGE_NAME} (${PACKAGE_ECOSYSTEM})
+**Severity:** ${SEVERITY}
+**GHSA:** [${GHSA_ID}](https://github.com/advisories/${GHSA_ID})
+**CVE:** ${CVE_TEXT}
+**Vulnerable versions:** ${VULN_RANGE}
+**First patched version:** ${PATCHED_TEXT}
+
+[View Dependabot Alert](${ALERT_URL})
+
+---
+A draft fix PR will be created automatically via Claude Code."
+
+          PAYLOAD=$(jq -n \
+            --arg title "[${REPO}] ${GHSA_ID}: ${SUMMARY}" \
+            --arg description "$DESCRIPTION" \
+            --argjson priority "$PRIORITY" \
+            '{
+              query: "mutation CreateIssue($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { id identifier url } } }",
+              variables: {
+                input: {
+                  teamId: "0b2f2134-ef52-46dc-9fef-71d77d89aca9",
+                  projectId: "222fe574-e2cd-42e8-9d82-ca27e5303dec",
+                  title: $title,
+                  description: $description,
+                  priority: $priority,
+                  labelIds: [
+                    "b8896161-52fe-436b-915e-03c50f909671",
+                    "c57b4706-1b7b-4d80-9e2c-3a79a0ef4380"
+                  ]
+                }
+              }
+            }')
+
+          RESPONSE=$(curl -s -X POST https://api.linear.app/graphql \
+            -H "Authorization: ${LINEAR_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+
+          IDENTIFIER=$(echo "$RESPONSE" | jq -r '.data.issueCreate.issue.identifier')
+          URL=$(echo "$RESPONSE" | jq -r '.data.issueCreate.issue.url')
+
+          if [ "$IDENTIFIER" = "null" ] || [ -z "$IDENTIFIER" ]; then
+            echo "Error creating Linear ticket:"
+            echo "$RESPONSE" | jq .
+            exit 1
+          fi
+
+          echo "ticket_identifier=${IDENTIFIER}" >> "$GITHUB_OUTPUT"
+          echo "ticket_url=${URL}" >> "$GITHUB_OUTPUT"
+          echo "Created Linear ticket: ${IDENTIFIER}"
+
+  create-fix-pr:
+    name: Create Fix PR via Claude Code
+    needs: create-linear-ticket
+    runs-on: self-hosted
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check ANTHROPIC_API_KEY
+        id: check-key
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TICKET_URL: ${{ needs.create-linear-ticket.outputs.ticket_url }}
+        run: |
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "ANTHROPIC_API_KEY not set — skipping PR creation"
+            echo "Fix manually: ${TICKET_URL}"
+          fi
+
+      - name: Check for existing PR
+        id: check-pr
+        if: steps.check-key.outputs.available == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GHSA_ID: ${{ inputs.ghsa_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          COUNT=$(gh pr list \
+            --repo "$REPO" \
+            --search "${GHSA_ID} in:title" \
+            --state open \
+            --json number \
+            --jq '. | length')
+          echo "exists=$([ "${COUNT}" -gt "0" ] && echo 'true' || echo 'false')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.check-key.outputs.available == 'true' && steps.check-pr.outputs.exists != 'true'
+
+      - name: Create fix branch
+        id: branch
+        if: steps.check-key.outputs.available == 'true' && steps.check-pr.outputs.exists != 'true'
+        env:
+          GHSA_ID: ${{ inputs.ghsa_id }}
+        run: |
+          BRANCH="fix/dependabot/${GHSA_ID}"
+          git checkout -b "$BRANCH"
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+
+      - name: Run Claude Code to fix vulnerability
+        if: steps.check-key.outputs.available == 'true' && steps.check-pr.outputs.exists != 'true'
+        uses: anthropics/claude-code-base-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          allowed_tools: "Bash,Read,Write,Edit,Glob,Grep"
+          timeout_minutes: "15"
+          prompt: |
+            Fix the following Dependabot security vulnerability in this repository:
+
+            Package: ${{ inputs.package_name }} (${{ inputs.package_ecosystem }})
+            Severity: ${{ inputs.severity }}
+            Vulnerability: ${{ inputs.summary }}
+            GHSA ID: ${{ inputs.ghsa_id }}
+            CVE: ${{ inputs.cve_id || 'N/A' }}
+            Vulnerable version range: ${{ inputs.vulnerable_version_range }}
+            First patched version: ${{ inputs.first_patched_version || 'latest stable' }}
+            Linear ticket: ${{ needs.create-linear-ticket.outputs.ticket_identifier }}
+
+            Steps:
+            1. Update ${{ inputs.package_name }} to version ${{ inputs.first_patched_version || 'the latest stable version' }} or later
+            2. Update any lock files (package-lock.json, yarn.lock, requirements.txt, poetry.lock, etc.)
+            3. Fix any breaking API changes introduced by the version upgrade
+            4. Keep changes minimal — only what resolves this specific vulnerability
+            5. Do not commit or create a PR — the workflow handles that
+
+      - name: Check for changes
+        id: changes
+        if: steps.check-key.outputs.available == 'true' && steps.check-pr.outputs.exists != 'true'
+        run: |
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit and push
+        if: >-
+          steps.check-key.outputs.available == 'true' &&
+          steps.check-pr.outputs.exists != 'true' &&
+          steps.changes.outputs.has_changes == 'true'
+        env:
+          PACKAGE_NAME: ${{ inputs.package_name }}
+          GHSA_ID: ${{ inputs.ghsa_id }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: update ${PACKAGE_NAME} to address ${GHSA_ID}"
+          git push origin "$BRANCH"
+
+      - name: Create draft PR
+        if: >-
+          steps.check-key.outputs.available == 'true' &&
+          steps.check-pr.outputs.exists != 'true' &&
+          steps.changes.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          ALERT_NUMBER: ${{ inputs.alert_number }}
+          SUMMARY: ${{ inputs.summary }}
+          PACKAGE_NAME: ${{ inputs.package_name }}
+          PACKAGE_ECOSYSTEM: ${{ inputs.package_ecosystem }}
+          SEVERITY: ${{ inputs.severity }}
+          GHSA_ID: ${{ inputs.ghsa_id }}
+          CVE_ID: ${{ inputs.cve_id }}
+          VULN_RANGE: ${{ inputs.vulnerable_version_range }}
+          PATCHED_VERSION: ${{ inputs.first_patched_version }}
+          TICKET_URL: ${{ needs.create-linear-ticket.outputs.ticket_url }}
+          TICKET_ID: ${{ needs.create-linear-ticket.outputs.ticket_identifier }}
+        run: |
+          gh pr create \
+            --draft \
+            --repo "$REPO" \
+            --head "$BRANCH" \
+            --title "fix(${PACKAGE_NAME}): address ${GHSA_ID}" \
+            --body "## Security Vulnerability Fix
+
+Addresses Dependabot alert #${ALERT_NUMBER}: **${SUMMARY}**
+
+| Field | Value |
+|-------|-------|
+| Package | \`${PACKAGE_NAME}\` (${PACKAGE_ECOSYSTEM}) |
+| Severity | ${SEVERITY} |
+| GHSA | [${GHSA_ID}](https://github.com/advisories/${GHSA_ID}) |
+| CVE | ${CVE_ID:-N/A} |
+| Vulnerable range | ${VULN_RANGE} |
+| Fixed in | ${PATCHED_VERSION:-latest} |
+
+**Linear:** [${TICKET_ID}](${TICKET_URL})
+
+> 🤖 Generated by [Claude Code](https://claude.ai/claude-code) via [dependabot-management](https://github.com/pgmac-net/pg-actions)"
+
+      - name: No automatic fix available
+        if: >-
+          steps.check-key.outputs.available == 'true' &&
+          steps.check-pr.outputs.exists != 'true' &&
+          steps.changes.outputs.has_changes == 'false'
+        env:
+          GHSA_ID: ${{ inputs.ghsa_id }}
+          TICKET_URL: ${{ needs.create-linear-ticket.outputs.ticket_url }}
+        run: |
+          echo "Claude Code could not generate an automatic fix for ${GHSA_ID}."
+          echo "Manual fix required. Linear: ${TICKET_URL}"

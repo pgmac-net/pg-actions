@@ -1,0 +1,25 @@
+name: Dependabot Alert
+
+on:
+  dependabot_alert:
+    types: [created, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  manage:
+    if: contains(fromJSON('["high", "critical"]'), github.event.alert.security_vulnerability.severity)
+    uses: pgmac-net/pg-actions/.github/workflows/dependabot-management.yml@main
+    with:
+      alert_number: ${{ github.event.alert.number }}
+      package_name: ${{ github.event.alert.dependency.package.name }}
+      package_ecosystem: ${{ github.event.alert.dependency.package.ecosystem }}
+      severity: ${{ github.event.alert.security_vulnerability.severity }}
+      summary: ${{ github.event.alert.security_advisory.summary }}
+      cve_id: ${{ github.event.alert.security_advisory.cve_id }}
+      ghsa_id: ${{ github.event.alert.security_advisory.ghsa_id }}
+      vulnerable_version_range: ${{ github.event.alert.security_vulnerability.vulnerable_version_range }}
+      first_patched_version: ${{ github.event.alert.security_vulnerability.first_patched_version.identifier }}
+    secrets: inherit
