@@ -30,11 +30,17 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Install Claude Code
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          echo "CLAUDE_BIN=$(which claude)" >> "$GITHUB_ENV"
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          path_to_claude_code_executable: ${{ env.CLAUDE_BIN }}
 
           # This is an optional setting that allows Claude to read CI results on PRs
           additional_permissions: |
