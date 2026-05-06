@@ -44,7 +44,7 @@ on:
     secrets:
       LINEAR_API_KEY:
         required: true
-      ANTHROPIC_API_KEY:
+      CLAUDE_CODE_OAUTH_TOKEN:
         required: false
 
 jobs:
@@ -184,17 +184,17 @@ A draft fix PR will be created automatically via Claude Code."
       contents: write
       pull-requests: write
     steps:
-      - name: Check ANTHROPIC_API_KEY
+      - name: Check CLAUDE_CODE_OAUTH_TOKEN
         id: check-key
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           TICKET_URL: ${{ needs.create-linear-ticket.outputs.ticket_url }}
         run: |
-          if [ -n "$ANTHROPIC_API_KEY" ]; then
+          if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "ANTHROPIC_API_KEY not set — skipping PR creation"
+            echo "CLAUDE_CODE_OAUTH_TOKEN not set — skipping PR creation"
             echo "Fix manually: ${TICKET_URL}"
           fi
 
@@ -231,7 +231,7 @@ A draft fix PR will be created automatically via Claude Code."
         if: steps.check-key.outputs.available == 'true' && steps.check-pr.outputs.exists != 'true'
         uses: anthropics/claude-code-base-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           allowed_tools: "Bash,Read,Write,Edit,Glob,Grep"
           timeout_minutes: "15"
           prompt: |
