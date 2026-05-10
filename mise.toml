@@ -3,6 +3,6 @@ lockfile = true
 
 [tools]
 gh = "2.92.0"
-grype = "0.111.1"
+grype = "0.112.0"
 syft = "1.44.0"
 zizmor = "1.24.1"
