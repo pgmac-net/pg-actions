@@ -45,6 +45,8 @@ on:
 jobs:
   DepTrack-sbom:
     runs-on: ${{ inputs.runs-on || 'self-hosted' }}
+    outputs:
+      dtrack-project-url: ${{ steps.dtrack-url.outputs.url }}
     timeout-minutes: 3
     permissions:
       id-token: write
@@ -90,6 +92,25 @@ jobs:
           projecttags: ${{ github.repository }}, ${{ github.ref_type }}, ${{ github.ref}}
           bomfilename: "sbom.json"
           autocreate: true
+
+      - name: Get DTrack project URL
+        id: dtrack-url
+        env:
+          DT_HOST: ${{ secrets.DT_HOST }}
+          DT_APIKEY: ${{ secrets.DT_APIKEY }}
+          PROJECT_NAME: ${{ github.repository }}
+          PROJECT_VERSION: ${{ github.sha }}
+        run: |
+          PROJECT_UUID=$(curl -sf \
+            -H "X-Api-Key: ${DT_APIKEY}" \
+            "https://${DT_HOST}/api/v1/project/lookup?name=${PROJECT_NAME}&version=${PROJECT_VERSION}" \
+            | jq -r '.uuid')
+          DTRACK_URL="https://${DT_HOST}/projects/${PROJECT_UUID}"
+          echo "url=${DTRACK_URL}" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Dependency Track"
+            echo "[View project](${DTRACK_URL})"
+          } >> "${GITHUB_STEP_SUMMARY}"
 
   GHAS-dependency-scan:
     runs-on: ${{ inputs.runs-on || 'self-hosted' }}
@@ -138,6 +159,7 @@ jobs:
           SARIF_FILE: ${{ steps.scan.outputs.sarif }}
           SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           REPO: ${{ github.repository }}
+          DTRACK_URL: ${{ needs.DepTrack-sbom.outputs.dtrack-project-url }}
         run: |
           TOTAL=$(jq -r '.runs[0].results | length' "${SARIF_FILE}" 2>/dev/null || echo "0")
           CRITICAL=$(jq -r '.runs[0].results[] | select(.level == "error") | .level' "${SARIF_FILE}" 2>/dev/null | wc -l | tr -d ' ')
@@ -163,6 +185,11 @@ jobs:
 
           > This comment will be updated on each commit
           RESULTS
+
+          if [ -n "${DTRACK_URL}" ]; then
+            echo "" >> /tmp/scan-results.md
+            echo "**[View in Dependency Track](${DTRACK_URL})**" >> /tmp/scan-results.md
+          fi
 
       - name: Add results to job summary
         run: cat /tmp/scan-results.md >> "${GITHUB_STEP_SUMMARY}"
