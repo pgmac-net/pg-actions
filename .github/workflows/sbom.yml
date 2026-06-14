@@ -90,20 +90,18 @@ jobs:
           PROJECT_VERSION: ${{ github.sha }}
           PROJECT_TAGS: "${{ github.repository }}, ${{ github.ref_type }}, ${{ github.ref }}"
         run: |
-          BOM_B64=$(base64 -w 0 sbom.json)
-          [[ "${BOM_B64}" == 77u/* ]] && BOM_B64="${BOM_B64:4}"
           TAGS=$(printf '%s' "${PROJECT_TAGS}" | jq -Rc 'split(",") | map(gsub("^ +| +$"; "") | {name: .})')
-          PAYLOAD=$(jq -n \
+          jq -n \
             --arg name "${PROJECT_NAME}" \
             --arg version "${PROJECT_VERSION}" \
             --argjson tags "${TAGS}" \
-            --arg bom "${BOM_B64}" \
-            '{projectName: $name, projectVersion: $version, autoCreate: true, bom: $bom, projectTags: $tags}')
-          curl -sf -X PUT \
-            -H "X-Api-Key: ${DT_APIKEY}" \
-            -H "Content-Type: application/json" \
-            -d "${PAYLOAD}" \
-            "https://${DT_HOST}/api/v1/bom"
+            --rawfile bom sbom.json \
+            '{projectName: $name, projectVersion: $version, autoCreate: true, bom: ($bom | ltrimstr("\ufeff") | @base64), projectTags: $tags}' \
+          | curl -sf -X PUT \
+              -H "X-Api-Key: ${DT_APIKEY}" \
+              -H "Content-Type: application/json" \
+              -d @- \
+              "https://${DT_HOST}/api/v1/bom"
 
       - name: Get DTrack project URL
         id: dtrack-url
