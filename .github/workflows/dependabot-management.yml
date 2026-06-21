@@ -201,7 +201,7 @@ jobs:
             jq '.total_count')
           echo "exists=$([ "${COUNT}" -gt "0" ] && echo 'true' || echo 'false')" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         if: steps.check-key.outputs.available == 'true' && steps.check-pr.outputs.exists != 'true'
 
       - name: Create fix branch
