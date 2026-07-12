@@ -12,12 +12,12 @@ on:
         description: "Runner to use for the job"
         required: false
         type: string
-        default: "self-hosted"
+        default: "ubuntu-latest"
 
 jobs:
   scorecard:
     name: Scorecard analysis
-    runs-on: ${{ inputs.runs-on || 'self-hosted' }}
+    runs-on: ${{ inputs.runs-on || 'ubuntu-latest' }}
     permissions:
       contents: read
       actions: read
