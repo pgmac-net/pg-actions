@@ -5,4 +5,4 @@ lockfile = true
 "github:cli/cli" = "v2.96.0"
 grype = "0.115.0"
 "github:anchore/syft" = "v1.46.0"
-zizmor = "1.25.2"
+zizmor = "1.26.1"
