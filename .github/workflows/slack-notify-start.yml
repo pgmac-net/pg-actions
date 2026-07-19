@@ -41,7 +41,7 @@ jobs:
 
       - name: Send Slack message
         id: slack
-        uses: slackapi/slack-github-action@v3.0.5
+        uses: slackapi/slack-github-action@v4.0.0
         continue-on-error: true
         with:
           method: chat.postMessage
