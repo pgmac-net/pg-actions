@@ -4,5 +4,5 @@ lockfile = true
 [tools]
 "github:cli/cli" = "v2.96.0"
 grype = "0.115.0"
-"github:anchore/syft" = "v1.46.0"
+"github:anchore/syft" = "v1.48.0"
 zizmor = "1.27.0"
