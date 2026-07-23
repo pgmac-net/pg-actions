@@ -3,6 +3,6 @@ lockfile = true
 
 [tools]
 "github:cli/cli" = "v2.96.0"
-grype = "0.115.0"
+grype = "0.116.0"
 "github:anchore/syft" = "v1.46.0"
 zizmor = "1.27.0"
