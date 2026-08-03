@@ -94,13 +94,13 @@ url_api = "https://api.github.com/repos/cli/cli/releases/assets/464728577"
 provenance = "github-attestations"
 
 [[tools.grype]]
-version = "0.115.0"
+version = "0.116.0"
 backend = "ubi:anchore/grype"
 
 [tools.grype."platforms.linux-x64"]
-checksum = "sha256:3fad92940650e514c0aa2dad83526942a055e210cec09a8a59d9c024adc2b90e"
-url = "https://github.com/anchore/grype/releases/download/v0.115.0/grype_0.115.0_linux_amd64.tar.gz"
-url_api = "https://api.github.com/repos/anchore/grype/releases/assets/458590912"
+checksum = "sha256:40aff724297312f91ea390d003bed8d8651c74cc7f5b26732db80b3a408d2fc5"
+url = "https://github.com/anchore/grype/releases/download/v0.116.0/grype_0.116.0_linux_amd64.tar.gz"
+url_api = "https://api.github.com/repos/anchore/grype/releases/assets/479407286"
 
 [[tools.zizmor]]
 version = "1.28.0"
