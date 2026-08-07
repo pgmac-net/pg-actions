@@ -1,6 +1,3 @@
-[settings]
-lockfile = true
-
 [tools]
 "github:cli/cli" = "v2.97.0"
 grype = "0.116.1"
