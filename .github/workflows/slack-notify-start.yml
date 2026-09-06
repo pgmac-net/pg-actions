@@ -24,9 +24,12 @@ on:
 
 jobs:
   notify:
-    runs-on: self-hosted
-    container:
-      image: ubuntu:26.04
+    # GitHub-hosted: posts to the Slack API only, no homelab dependency.
+    # slim is sufficient — slackapi/slack-github-action is a JS action needing no CLI tooling.
+    # The ubuntu:26.04 container was dropped with the move off self-hosted: it existed to
+    # give the ARC runner pod a consistent Ubuntu userland, the runner now provides that
+    # directly, and ubuntu-slim runs unprivileged with no Docker so it cannot host one.
+    runs-on: ubuntu-slim
     outputs:
       ts: ${{ steps.slack.outputs.ts }}
       start: ${{ steps.jobstart.outputs.start }}

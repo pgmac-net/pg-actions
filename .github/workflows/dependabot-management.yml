@@ -50,7 +50,9 @@ on:
 jobs:
   create-linear-ticket:
     name: Create Linear Ticket
-    runs-on: self-hosted
+    # GitHub-hosted: Linear GraphQL API only, no homelab dependency.
+    # ubuntu-latest (not slim) because the steps need jq and curl.
+    runs-on: ubuntu-latest
     outputs:
       ticket_identifier: ${{ steps.create-ticket.outputs.ticket_identifier || steps.check-existing.outputs.ticket_identifier }}
       ticket_url: ${{ steps.create-ticket.outputs.ticket_url || steps.check-existing.outputs.ticket_url }}
@@ -167,7 +169,9 @@ jobs:
   create-fix-pr:
     name: Create Fix PR via Claude Code
     needs: create-linear-ticket
-    runs-on: self-hosted
+    # GitHub-hosted: Claude Code action + GitHub API + git push, no homelab dependency.
+    # ubuntu-latest (not slim) because the steps need jq, curl and npm.
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
