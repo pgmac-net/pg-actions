@@ -205,11 +205,11 @@ Two workflows that together automate the response to Dependabot security alerts.
 
 For each alert the system will:
 
-1. Check Linear for an existing ticket matching the GHSA ID and repo — skip if found
-2. Create a Linear ticket in the HomeLabia project with severity-based priority
+1. Check the repo for an open issue matching the GHSA ID — skip if found
+2. Create a GitHub issue in the affected repo, labelled `security`, `dependencies` and `severity:<level>`
 3. Check for an existing fix PR — skip if found
 4. Run Claude Code on a new branch to update the vulnerable package and lock files
-5. Open a draft PR linking back to the Linear ticket
+5. Open a draft PR that closes the issue on merge
 
 ## dependabot-alert.yml
 
@@ -222,6 +222,7 @@ This workflow is **not** callable — copy it directly into each repo's `.github
 ```yaml
 permissions:
   contents: write
+  issues: write
   pull-requests: write
 ```
 
@@ -229,7 +230,6 @@ permissions:
 
 | Name | Required | Description |
 |------|----------|-------------|
-| `LINEAR_API_KEY` | Yes | Linear API key for ticket creation |
 | `CLAUDE_CODE_OAUTH_TOKEN` | No | Claude Code OAuth token — PR creation is skipped if absent |
 
 ### Usage
@@ -245,6 +245,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
   pull-requests: write
 
 jobs:
@@ -309,7 +310,7 @@ jobs:
 
 ## dependabot-management.yml
 
-The reusable worker. Called once per alert by `dependabot-alert.yml`. Creates the Linear ticket and (when `CLAUDE_CODE_OAUTH_TOKEN` is available) opens a draft fix PR via Claude Code.
+The reusable worker. Called once per alert by `dependabot-alert.yml`. Creates the GitHub issue and (when `CLAUDE_CODE_OAUTH_TOKEN` is available) opens a draft fix PR via Claude Code.
 
 Can also be called directly from any workflow that already has alert metadata.
 
@@ -331,7 +332,6 @@ Can also be called directly from any workflow that already has alert metadata.
 
 | Name | Required | Description |
 |------|----------|-------------|
-| `LINEAR_API_KEY` | Yes | Linear API key — used to create/find tickets in the HomeLabia project |
 | `CLAUDE_CODE_OAUTH_TOKEN` | No | Claude Code OAuth token — PR creation is skipped if absent; manual fix is required |
 
 ### Usage
@@ -355,7 +355,7 @@ jobs:
 
 ### What happens without `CLAUDE_CODE_OAUTH_TOKEN`
 
-The Linear ticket is still created. The fix PR step is skipped and the ticket URL is printed to the job log for manual action.
+The GitHub issue is still created. The fix PR step is skipped and the issue URL is printed to the job log for manual action.
 
 ---
 

@@ -42,67 +42,68 @@ on:
         type: string
         default: ""
     secrets:
-      LINEAR_API_KEY:
-        required: true
       CLAUDE_CODE_OAUTH_TOKEN:
         required: false
 
 jobs:
-  create-linear-ticket:
-    name: Create Linear Ticket
-    # GitHub-hosted: Linear GraphQL API only, no homelab dependency.
-    # ubuntu-latest (not slim) because the steps need jq and curl.
+  create-issue:
+    name: Create GitHub Issue
+    # GitHub-hosted: GitHub API only, no homelab dependency.
+    # ubuntu-latest (not slim) because the steps need the gh CLI.
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     outputs:
-      ticket_identifier: ${{ steps.create-ticket.outputs.ticket_identifier || steps.check-existing.outputs.ticket_identifier }}
-      ticket_url: ${{ steps.create-ticket.outputs.ticket_url || steps.check-existing.outputs.ticket_url }}
+      issue_number: ${{ steps.create-issue.outputs.issue_number || steps.check-existing.outputs.issue_number }}
+      issue_url: ${{ steps.create-issue.outputs.issue_url || steps.check-existing.outputs.issue_url }}
     steps:
-      - name: Check for existing ticket
+      - name: Check for existing issue
         id: check-existing
         env:
-          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
           GHSA_ID: ${{ inputs.ghsa_id }}
           REPO: ${{ github.repository }}
         run: |
-          PAYLOAD=$(jq -n \
-            --arg ghsa "$GHSA_ID" \
-            --arg repo "$REPO" \
-            '{
-              query: "query FindIssue($filter: IssueFilter) { issues(filter: $filter) { nodes { id identifier url } } }",
-              variables: {
-                filter: {
-                  team: { id: { eq: "0b2f2134-ef52-46dc-9fef-71d77d89aca9" } },
-                  and: [
-                    { title: { containsIgnoreCase: $ghsa } },
-                    { title: { containsIgnoreCase: $repo } }
-                  ]
-                }
-              }
-            }')
+          EXISTING=$(gh issue list \
+            --repo "$REPO" \
+            --state open \
+            --search "${GHSA_ID} in:title" \
+            --limit 1 \
+            --json number,url)
 
-          RESPONSE=$(curl -s -X POST https://api.linear.app/graphql \
-            -H "Authorization: ${LINEAR_API_KEY}" \
-            -H "Content-Type: application/json" \
-            -d "$PAYLOAD")
-
-          COUNT=$(echo "$RESPONSE" | jq '.data.issues.nodes | length')
-          if [ "${COUNT}" -gt "0" ]; then
-            IDENTIFIER=$(echo "$RESPONSE" | jq -r '.data.issues.nodes[0].identifier')
-            URL=$(echo "$RESPONSE" | jq -r '.data.issues.nodes[0].url')
+          if [ "$(echo "$EXISTING" | jq 'length')" -gt "0" ]; then
+            NUMBER=$(echo "$EXISTING" | jq -r '.[0].number')
+            URL=$(echo "$EXISTING" | jq -r '.[0].url')
             echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "ticket_identifier=${IDENTIFIER}" >> "$GITHUB_OUTPUT"
-            echo "ticket_url=${URL}" >> "$GITHUB_OUTPUT"
-            echo "Existing ticket found: ${IDENTIFIER}"
+            echo "issue_number=${NUMBER}" >> "$GITHUB_OUTPUT"
+            echo "issue_url=${URL}" >> "$GITHUB_OUTPUT"
+            echo "Existing issue found: #${NUMBER}"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "No existing ticket for ${GHSA_ID} in ${REPO}"
+            echo "No existing issue for ${GHSA_ID} in ${REPO}"
           fi
 
-      - name: Create ticket
-        id: create-ticket
+      - name: Ensure labels exist
         if: steps.check-existing.outputs.exists != 'true'
         env:
-          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Idempotent: gh exits non-zero when the label already exists.
+          create_label() {
+            gh label create "$1" --repo "$REPO" --color "$2" --description "$3" 2>/dev/null || true
+          }
+          create_label "security" "d73a4a" "Security vulnerability"
+          create_label "dependencies" "0366d6" "Dependency updates"
+          create_label "severity:critical" "b60205" "Critical severity vulnerability"
+          create_label "severity:high" "d93f0b" "High severity vulnerability"
+
+      - name: Create issue
+        id: create-issue
+        if: steps.check-existing.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
           GHSA_ID: ${{ inputs.ghsa_id }}
           REPO: ${{ github.repository }}
           PACKAGE_NAME: ${{ inputs.package_name }}
@@ -115,9 +116,8 @@ jobs:
           ALERT_NUMBER: ${{ inputs.alert_number }}
         run: |
           case "$SEVERITY" in
-            critical) PRIORITY=1 ;;
-            high)     PRIORITY=2 ;;
-            *)        PRIORITY=3 ;;
+            critical) SEVERITY_LABEL="severity:critical" ;;
+            *)        SEVERITY_LABEL="severity:high" ;;
           esac
 
           ALERT_URL="https://github.com/${REPO}/security/dependabot/${ALERT_NUMBER}"
@@ -125,50 +125,29 @@ jobs:
           PATCHED_TEXT="${PATCHED_VERSION:-None available}"
 
           NL=$'\n'
-          DESCRIPTION="## Dependabot Security Alert${NL}${NL}**Repository:** ${REPO}${NL}**Package:** ${PACKAGE_NAME} (${PACKAGE_ECOSYSTEM})${NL}**Severity:** ${SEVERITY}${NL}**GHSA:** [${GHSA_ID}](https://github.com/advisories/${GHSA_ID})${NL}**CVE:** ${CVE_TEXT}${NL}**Vulnerable versions:** ${VULN_RANGE}${NL}**First patched version:** ${PATCHED_TEXT}${NL}${NL}[View Dependabot Alert](${ALERT_URL})${NL}${NL}---${NL}A draft fix PR will be created automatically via Claude Code."
+          BODY="## Dependabot Security Alert${NL}${NL}**Repository:** ${REPO}${NL}**Package:** ${PACKAGE_NAME} (${PACKAGE_ECOSYSTEM})${NL}**Severity:** ${SEVERITY}${NL}**GHSA:** [${GHSA_ID}](https://github.com/advisories/${GHSA_ID})${NL}**CVE:** ${CVE_TEXT}${NL}**Vulnerable versions:** ${VULN_RANGE}${NL}**First patched version:** ${PATCHED_TEXT}${NL}${NL}[View Dependabot Alert](${ALERT_URL})${NL}${NL}---${NL}A draft fix PR will be created automatically via Claude Code."
 
-          PAYLOAD=$(jq -n \
-            --arg title "[${REPO}] ${GHSA_ID}: ${SUMMARY}" \
-            --arg description "$DESCRIPTION" \
-            --argjson priority "$PRIORITY" \
-            '{
-              query: "mutation CreateIssue($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { id identifier url } } }",
-              variables: {
-                input: {
-                  teamId: "0b2f2134-ef52-46dc-9fef-71d77d89aca9",
-                  projectId: "222fe574-e2cd-42e8-9d82-ca27e5303dec",
-                  title: $title,
-                  description: $description,
-                  priority: $priority,
-                  labelIds: [
-                    "b8896161-52fe-436b-915e-03c50f909671",
-                    "c57b4706-1b7b-4d80-9e2c-3a79a0ef4380"
-                  ]
-                }
-              }
-            }')
+          URL=$(gh issue create \
+            --repo "$REPO" \
+            --title "${GHSA_ID}: ${SUMMARY}" \
+            --body "$BODY" \
+            --label "security" \
+            --label "dependencies" \
+            --label "$SEVERITY_LABEL")
 
-          RESPONSE=$(curl -s -X POST https://api.linear.app/graphql \
-            -H "Authorization: ${LINEAR_API_KEY}" \
-            -H "Content-Type: application/json" \
-            -d "$PAYLOAD")
-
-          IDENTIFIER=$(echo "$RESPONSE" | jq -r '.data.issueCreate.issue.identifier')
-          URL=$(echo "$RESPONSE" | jq -r '.data.issueCreate.issue.url')
-
-          if [ "$IDENTIFIER" = "null" ] || [ -z "$IDENTIFIER" ]; then
-            echo "Error creating Linear ticket:"
-            echo "$RESPONSE" | jq .
+          if [ -z "$URL" ]; then
+            echo "Error creating GitHub issue"
             exit 1
           fi
 
-          echo "ticket_identifier=${IDENTIFIER}" >> "$GITHUB_OUTPUT"
-          echo "ticket_url=${URL}" >> "$GITHUB_OUTPUT"
-          echo "Created Linear ticket: ${IDENTIFIER}"
+          NUMBER="${URL##*/}"
+          echo "issue_number=${NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "issue_url=${URL}" >> "$GITHUB_OUTPUT"
+          echo "Created GitHub issue: #${NUMBER} — ${URL}"
 
   create-fix-pr:
     name: Create Fix PR via Claude Code
-    needs: create-linear-ticket
+    needs: create-issue
     # GitHub-hosted: Claude Code action + GitHub API + git push, no homelab dependency.
     # ubuntu-latest (not slim) because the steps need jq, curl and npm.
     runs-on: ubuntu-latest
@@ -180,14 +159,14 @@ jobs:
         id: check-key
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          TICKET_URL: ${{ needs.create-linear-ticket.outputs.ticket_url }}
+          ISSUE_URL: ${{ needs.create-issue.outputs.issue_url }}
         run: |
           if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
             echo "CLAUDE_CODE_OAUTH_TOKEN not set — skipping PR creation"
-            echo "Fix manually: ${TICKET_URL}"
+            echo "Fix manually: ${ISSUE_URL}"
           fi
 
       - name: Check for existing PR
@@ -235,7 +214,7 @@ jobs:
             CVE: ${{ inputs.cve_id || 'N/A' }}
             Vulnerable version range: ${{ inputs.vulnerable_version_range }}
             First patched version: ${{ inputs.first_patched_version || 'latest stable' }}
-            Linear ticket: ${{ needs.create-linear-ticket.outputs.ticket_identifier }}
+            GitHub issue: #${{ needs.create-issue.outputs.issue_number }}
 
             Steps:
             1. Update ${{ inputs.package_name }} to version ${{ inputs.first_patched_version || 'the latest stable version' }} or later
@@ -288,11 +267,11 @@ jobs:
           CVE_ID: ${{ inputs.cve_id }}
           VULN_RANGE: ${{ inputs.vulnerable_version_range }}
           PATCHED_VERSION: ${{ inputs.first_patched_version }}
-          TICKET_URL: ${{ needs.create-linear-ticket.outputs.ticket_url }}
-          TICKET_ID: ${{ needs.create-linear-ticket.outputs.ticket_identifier }}
+          ISSUE_URL: ${{ needs.create-issue.outputs.issue_url }}
+          ISSUE_NUMBER: ${{ needs.create-issue.outputs.issue_number }}
         run: |
           NL=$'\n'
-          PR_BODY="## Security Vulnerability Fix${NL}${NL}Addresses Dependabot alert #${ALERT_NUMBER}: **${SUMMARY}**${NL}${NL}| Field | Value |${NL}|-------|-------|${NL}| Package | \`${PACKAGE_NAME}\` (${PACKAGE_ECOSYSTEM}) |${NL}| Severity | ${SEVERITY} |${NL}| GHSA | [${GHSA_ID}](https://github.com/advisories/${GHSA_ID}) |${NL}| CVE | ${CVE_ID:-N/A} |${NL}| Vulnerable range | ${VULN_RANGE} |${NL}| Fixed in | ${PATCHED_VERSION:-latest} |${NL}${NL}**Linear:** [${TICKET_ID}](${TICKET_URL})${NL}${NL}> 🤖 Generated by [Claude Code](https://claude.ai/claude-code) via [dependabot-management](https://github.com/pgmac-net/pg-actions)"
+          PR_BODY="## Security Vulnerability Fix${NL}${NL}Addresses Dependabot alert #${ALERT_NUMBER}: **${SUMMARY}**${NL}${NL}| Field | Value |${NL}|-------|-------|${NL}| Package | \`${PACKAGE_NAME}\` (${PACKAGE_ECOSYSTEM}) |${NL}| Severity | ${SEVERITY} |${NL}| GHSA | [${GHSA_ID}](https://github.com/advisories/${GHSA_ID}) |${NL}| CVE | ${CVE_ID:-N/A} |${NL}| Vulnerable range | ${VULN_RANGE} |${NL}| Fixed in | ${PATCHED_VERSION:-latest} |${NL}${NL}Closes #${ISSUE_NUMBER}${NL}${NL}> 🤖 Generated by [Claude Code](https://claude.ai/claude-code) via [dependabot-management](https://github.com/pgmac-net/pg-actions)"
 
           BASE=$(curl -s \
             -H "Authorization: Bearer ${GH_TOKEN}" \
@@ -326,7 +305,7 @@ jobs:
           steps.changes.outputs.has_changes == 'false'
         env:
           GHSA_ID: ${{ inputs.ghsa_id }}
-          TICKET_URL: ${{ needs.create-linear-ticket.outputs.ticket_url }}
+          ISSUE_URL: ${{ needs.create-issue.outputs.issue_url }}
         run: |
           echo "Claude Code could not generate an automatic fix for ${GHSA_ID}."
-          echo "Manual fix required. Linear: ${TICKET_URL}"
+          echo "Manual fix required. Issue: ${ISSUE_URL}"
