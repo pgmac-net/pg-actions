@@ -118,7 +118,7 @@ Also runs automatically on push to `main`/`master` and on a weekly schedule (Sun
 
 | Name | Required | Default | Description |
 |------|----------|---------|-------------|
-| `runs-on` | No | `self-hosted` | Runner label |
+| `runs-on` | No | `ubuntu-latest` | Runner label |
 
 ### Permissions required in caller
 
@@ -149,7 +149,7 @@ Only callable via `workflow_call` — no standalone schedule trigger.
 
 | Name | Required | Default | Description |
 |------|----------|---------|-------------|
-| `runs-on` | No | `self-hosted` | Runner label |
+| `runs-on` | No | `ubuntu-latest` | Runner label |
 
 ### Permissions required in caller
 
@@ -250,7 +250,7 @@ permissions:
 jobs:
   get-alerts:
     name: List High/Critical Alerts
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.alerts.outputs.matrix }}
       has_alerts: ${{ steps.alerts.outputs.has_alerts }}

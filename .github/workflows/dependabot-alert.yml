@@ -11,7 +11,9 @@ permissions:
 jobs:
   get-alerts:
     name: List High/Critical Alerts
-    runs-on: self-hosted
+    # GitHub-hosted: GitHub API calls only, no homelab dependency.
+    # ubuntu-latest (not slim) because the steps need jq and curl.
+    runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.alerts.outputs.matrix }}
       has_alerts: ${{ steps.alerts.outputs.has_alerts }}

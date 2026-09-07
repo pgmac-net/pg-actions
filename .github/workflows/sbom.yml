@@ -8,7 +8,10 @@ name: SBOM Generator
 # It's designed to be called from a workflow_dispatch or a workflow_call event, but can be triggered by a push to the main or master branch.
 # I haven't testing calling from an external organisation workflows yet, the scanning should work, but the attestation may not.
 
-# It's running on a self-hosted runner. You'll need to have one of those setup, running and tagged with 'self-hsoted' for this to work.
+# Only the DepTrack-sbom job needs a self-hosted runner — it uploads to the internal
+# Dependency-Track at dtrack.int.pgmac.net. You'll need a runner set up, running and
+# tagged 'self-hosted' for that job to work. The GHAS-dependency-scan job has no homelab
+# dependency and runs on a GitHub-hosted runner. See pgmac-net/homelabia#176.
 
 # Because I'm using the free-tier of GitHub, I only have access to GHAS for public repositories, so the attestation and SARIF upload is only done for public repositories.
 
@@ -23,7 +26,7 @@ on:
   workflow_dispatch:
     inputs:
       runs-on:
-        description: "Runner to use for the job"
+        description: "Runner for the DepTrack-sbom job (GHAS-dependency-scan is always GitHub-hosted)"
         required: false
         type: choice # Optional: use 'choice' for dropdown in UI
         options:
@@ -32,7 +35,7 @@ on:
   workflow_call:
     inputs:
       runs-on:
-        description: "Runner to use for the job"
+        description: "Runner for the DepTrack-sbom job (GHAS-dependency-scan is always GitHub-hosted)"
         required: false
         type: string
         default: "self-hosted"
@@ -44,6 +47,8 @@ on:
 
 jobs:
   DepTrack-sbom:
+    # self-hosted by default: uploads the SBOM to the internal Dependency-Track
+    # at dtrack.int.pgmac.net, which is only reachable from the homelab.
     runs-on: ${{ inputs.runs-on || 'self-hosted' }}
     outputs:
       dtrack-project-url: ${{ steps.dtrack-url.outputs.url }}
@@ -123,7 +128,10 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
 
   GHAS-dependency-scan:
-    runs-on: ${{ inputs.runs-on || 'self-hosted' }}
+    # GitHub-hosted: grype scan + PR comment, no homelab dependency. Hardcoded rather
+    # than using inputs.runs-on, which is shared with DepTrack-sbom (which must stay
+    # self-hosted). ubuntu-latest (not slim) because the steps need gh, grype, jq and curl.
+    runs-on: ubuntu-latest
     needs: [DepTrack-sbom]
     permissions:
       id-token: write
