@@ -75,28 +75,63 @@ Building the drift body in JavaScript also fixed a latent bug: the old shell str
 written as an indented multi-line literal, so every line of the ticket description
 carried leading whitespace.
 
-## Propagation dependency
+## The orchestrator is not distributed (correcting an earlier assumption)
 
-`terraform-github/repository_files.tf` reads `.github/workflows/dependabot-alert.yml`
-from `pg-actions@main` and writes it into every managed repo. The orchestrator gained
-`issues: write`, so editing the source is not sufficient — until a `terraform-github`
-apply runs, stale copies in managed repos lack the permission and the reusable
-workflow's `gh issue create` returns 403.
+Planning assumed `terraform-github/repository_files.tf` distributed
+`.github/workflows/dependabot-alert.yml` from `pg-actions@main` into every managed
+repo, which would have made the new `issues: write` grant a propagation dependency:
+stale copies would 403 on `gh issue create` until a terraform apply ran.
 
-Ordering: merge pg-actions → run the terraform-github apply → merge the two drift PRs.
+That is not what the file does. It declares `data "github_repository_file"` sources
+for `dependabot-alert.yml` and `claude.yml`, and a `data "github_repository"` for the
+managed-repo set — but **no resource consumes any of them**, so nothing is ever
+written. Scanning `.github/workflows/` on the default branch of all 60 `pgmac-net`
+repos confirms it: `pg-actions` is the only repo carrying `dependabot-alert.yml`.
+
+So there are no stale copies, no 403 risk, and no merge-ordering constraint. The
+dead data sources are worth a follow-up — as written they imply a distribution that
+does not happen, and the orchestrator that `README.md` says should be copied into
+each managed repo is in fact copied into none of them.
 
 ## `LINEAR_API_KEY`
 
 Removed from `dependabot-management.yml`'s `workflow_call.secrets` block, both drift
 workflows, `terraform-github/scripts/set-claude-secrets.sh`, and both README secrets
-tables. The stored org and per-repo secrets are deleted separately, after the
-verification dispatches confirm nothing else consumes the key.
+tables.
+
+The stored secrets were then deleted. Every workflow file on the default branch of all
+60 `pgmac-net` repos was fetched and searched for `Linear` first, returning zero hits,
+before removing the org-level secret and the 14 per-repo copies (`ansible`,
+`ansible-role-microk8s`, `ansible-role-postgresql-backup`, `budgeteer`,
+`dot.config-cba.tech`, `homelab-cloudflare`, `pgk8s`, `slack-scores`, `tempplot`,
+`terraform-cloudflare-config`, `terraform-cloudflare-zerotrust-tunnels`,
+`terraform-github`, `terraform-postgresql`, `terraform-pvek8s`). A re-scan confirms
+no repo and no org secret named `LINEAR_API_KEY` remains.
 
 ## Verification
 
 None of these paths run on a pull request — drift is schedule/dispatch-only and
 `dependabot-management.yml` is `workflow_call`-only — so a green PR check proves
-nothing about the issue-creation code. `actionlint` and `zizmor` were run against every
-changed file locally, with findings compared against the pre-change baseline to confirm
-no regressions. Real verification is a post-merge `workflow_dispatch` of all three
-entry points.
+nothing about the issue-creation code.
+
+`actionlint` and `zizmor` were run against every changed file locally, with findings
+compared against the pre-change baseline. No regressions: actionlint unchanged (one
+pre-existing SC2129 style nit), zizmor unchanged on both drift workflows and +1
+`excessive-permissions` on `dependabot-alert.yml`, the same class already reported for
+`contents: write` and `pull-requests: write` at the workflow level.
+
+Post-merge `workflow_dispatch` of all three entry points ran green, but every
+issue-creation path was skipped — `pg-actions` had no open high/critical alerts, and
+neither terraform repo had drift — so nothing new was actually exercised beyond the
+Cloudflare message fix.
+
+The drift path was therefore forced on a throwaway `178-verify-drift-issue` branch,
+with both conditional steps set to `if: always()` and dispatched via `--ref` so `main`
+was never touched:
+
+- First run created `terraform-github#19` and the `drift` label at colour `fbca04`.
+- Second run logged `Commented on existing drift issue #19`, exercising the dedup and
+  comment path and the label-already-exists 422 catch.
+
+The issue was closed and the branch deleted. The Dependabot issue-creation path
+remains unexercised — it needs a real high/critical alert.
