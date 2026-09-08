@@ -88,10 +88,12 @@ managed-repo set — but **no resource consumes any of them**, so nothing is eve
 written. Scanning `.github/workflows/` on the default branch of all 60 `pgmac-net`
 repos confirms it: `pg-actions` is the only repo carrying `dependabot-alert.yml`.
 
-So there are no stale copies, no 403 risk, and no merge-ordering constraint. The
-dead data sources are worth a follow-up — as written they imply a distribution that
-does not happen, and the orchestrator that `README.md` says should be copied into
-each managed repo is in fact copied into none of them.
+So there are no stale copies, no 403 risk, and no merge-ordering constraint.
+
+The dead data sources were raised as pgmac-net/terraform-github#20 and resolved by
+deleting them rather than implementing the distribution: `repository_files.tf` is
+gone, and this repo's `README.md` now states plainly that orchestrator adoption is
+manual and currently limited to `pg-actions` itself.
 
 ## `LINEAR_API_KEY`
 
