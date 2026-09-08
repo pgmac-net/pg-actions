@@ -201,7 +201,9 @@ EG:
 
 # Dependabot Alert Management
 
-Two workflows that together automate the response to Dependabot security alerts. The orchestrator (`dependabot-alert.yml`) is distributed to each managed repo and runs on a schedule; it fans out to the reusable worker (`dependabot-management.yml`) once per high/critical open alert.
+Two workflows that together automate the response to Dependabot security alerts. The orchestrator (`dependabot-alert.yml`) is adopted per repo — copied in by hand, see below — and fans out to the reusable worker (`dependabot-management.yml`) once per high/critical open alert.
+
+> **Adoption is manual and currently limited to this repo.** An earlier design distributed the orchestrator via `terraform-github`, but that was never wired up and the dead configuration has since been removed (pgmac-net/terraform-github#20). Any repo that wants this pipeline needs the file copied in.
 
 For each alert the system will:
 
@@ -213,7 +215,7 @@ For each alert the system will:
 
 ## dependabot-alert.yml
 
-The per-repo orchestrator. Runs every 6 hours (and on manual dispatch), fetches all open high/critical Dependabot alerts, and calls `dependabot-management.yml` once per alert via a matrix strategy.
+The per-repo orchestrator. Fetches all open high/critical Dependabot alerts and calls `dependabot-management.yml` once per alert via a matrix strategy. The copy in this repo is `workflow_dispatch` only; the snippet below adds the 6-hourly schedule that a real adopting repo wants.
 
 This workflow is **not** callable — copy it directly into each repo's `.github/workflows/` directory. It requires no configuration; all secrets flow through via `secrets: inherit`.
 
