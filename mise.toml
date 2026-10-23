@@ -2,4 +2,4 @@
 "github:cli/cli" = "v2.102.0"
 "github:anchore/syft" = "v1.54.1"
 grype = "0.120.1"
-zizmor = "1.31.0"
+zizmor = "1.31.1"
