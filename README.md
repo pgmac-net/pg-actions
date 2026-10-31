@@ -451,3 +451,15 @@ claude setup-token
 ```
 
 The token maps to your Claude Pro/Max subscription quota, not an API key. Org-level secrets only reach public repos on the free GitHub tier; private repos need the secret set individually.
+
+---
+
+# Security and maintenance of this repo
+
+- All third-party and GitHub-owned actions are pinned to a full commit SHA with a `# vX.Y.Z` comment.
+  Renovate (`helpers:pinGitHubActionDigests`) keeps the pins current; Dependabot also covers `github-actions`.
+- Every workflow declares a top-level `permissions: contents: read`; jobs request extra scopes only where needed.
+  The `sbom` reusable workflow no longer needs `id-token`/`attestations: write` in the scan job or `security-events: write`
+  in the SBoM job, so callers may grant less than before (the attest step in the SBoM job still needs `id-token` and `attestations: write`).
+- `zizmor.yml` runs static analysis over the workflows and uploads SARIF to the Security tab.
+- See [SECURITY.md](SECURITY.md) for how to report a vulnerability.

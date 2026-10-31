@@ -4,14 +4,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  issues: write
-  pull-requests: write
-  security-events: read
+  contents: read
 
 jobs:
   get-alerts:
     name: List High/Critical Alerts
+    permissions:
+      contents: read
+      security-events: read
     # GitHub-hosted: GitHub API calls only, no homelab dependency.
     # ubuntu-latest (not slim) because the steps need jq and curl.
     runs-on: ubuntu-latest
@@ -69,7 +69,11 @@ jobs:
     strategy:
       matrix: ${{ fromJSON(needs.get-alerts.outputs.matrix) }}
       fail-fast: false
-    uses: pgmac-net/pg-actions/.github/workflows/dependabot-management.yml@main
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    uses: ./.github/workflows/dependabot-management.yml
     with:
       alert_number: ${{ matrix.alert_number }}
       package_name: ${{ matrix.package_name }}
