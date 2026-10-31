@@ -1,4 +1,5 @@
 {
   "minimumReleaseAge": "7 days",
+  "extends": ["helpers:pinGitHubActionDigests"],
   "$schema": "https://docs.renovatebot.com/renovate-schema.json"
 }
