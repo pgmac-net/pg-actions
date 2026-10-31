@@ -30,6 +30,8 @@ Planned on the ticket after a short grilling pass. Decisions:
 ## Known remaining zizmor findings (follow-ups)
 
 - `dangerous-triggers` on `claude.yml` (issue_comment etc.; guarded by `@claude` condition).
-- `secrets-inherit` in `dependabot-alert.yml`.
+- `self-repository` hint in `dependabot-alert.yml` (`./` vs `$/`): left as is; `$/` is only documented for step-level `uses:` and cannot be tested on a `workflow_dispatch` workflow. Dismiss as won't-fix.
+
+Fixed after PR review: `secrets-inherit` in `dependabot-alert.yml` now passes `CLAUDE_CODE_OAUTH_TOKEN` explicitly.
 - `artipacked` in `claude.yml` and `dependabot-management.yml` (credentials needed to push).
 - `adhoc-packages` for `npm install -g` in `claude.yml`.
