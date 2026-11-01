@@ -35,3 +35,7 @@ Planned on the ticket after a short grilling pass. Decisions:
 Fixed after PR review: `secrets-inherit` in `dependabot-alert.yml` now passes `CLAUDE_CODE_OAUTH_TOKEN` explicitly.
 - `artipacked` in `claude.yml` and `dependabot-management.yml` (credentials needed to push).
 - `adhoc-packages` for `npm install -g` in `claude.yml`.
+
+## Follow-up (pgmac-net/pg-actions#149)
+
+`claude.yml` was removed (the `@claude` workflow is no longer used), which clears the `dangerous-triggers`, `artipacked` and `adhoc-packages` zizmor alerts for it plus the Scorecard unpinned-npm alert. `dependabot.yml` gained a 7-day cooldown (`dependabot-cooldown`). The `artipacked` finding on `dependabot-management.yml` is dismissed as won't-fix (the job pushes with checkout credentials). Org-wide removal of the workflow is tracked in pgmac-net/homelabia#228.
