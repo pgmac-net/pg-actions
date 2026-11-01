@@ -1,0 +1,5 @@
+rules:
+  dependabot-cooldown:
+    config:
+      # Matches the 3 day Renovate minimumReleaseAge and Dependabot cooldown.
+      days: 3
