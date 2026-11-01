@@ -91,7 +91,23 @@ jobs:
           show-summary: true
           push-to-registry: false
 
+      - name: Check Dependency Track configuration
+        id: dtrack-config
+        env:
+          DT_HOST: ${{ secrets.DT_HOST }}
+        run: |
+          # Dependabot and fork PRs get no Actions secrets, so DT_HOST is empty there.
+          # Skip the Dependency Track steps for pull_request runs only. A missing
+          # secret on push or workflow_dispatch still fails the job.
+          if [ -z "${DT_HOST}" ] && [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            echo "enabled=false" >> "${GITHUB_OUTPUT}"
+            echo "::notice title=Dependency Track skipped::DT_HOST is not available to this pull_request run (Dependabot and fork PRs get no Actions secrets). The SBoM is uploaded on push to the default branch."
+          else
+            echo "enabled=true" >> "${GITHUB_OUTPUT}"
+          fi
+
       - name: Upload SBoM to Dependency Track
+        if: steps.dtrack-config.outputs.enabled == 'true'
         env:
           DT_HOST: ${{ secrets.DT_HOST }}
           DT_APIKEY: ${{ secrets.DT_APIKEY }}
@@ -114,6 +130,7 @@ jobs:
 
       - name: Get DTrack project URL
         id: dtrack-url
+        if: steps.dtrack-config.outputs.enabled == 'true'
         env:
           DT_HOST: ${{ secrets.DT_HOST }}
           DT_APIKEY: ${{ secrets.DT_APIKEY }}
