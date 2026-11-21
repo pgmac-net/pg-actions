@@ -202,7 +202,7 @@ jobs:
 
       - name: Run Claude Code to fix vulnerability
         if: steps.check-key.outputs.available == 'true' && steps.check-pr.outputs.exists != 'true'
-        uses: anthropics/claude-code-action/base-action@e5812cd75691ca7bbfc57c0ecf4441db3a1ab7dd # v1.0.281
+        uses: anthropics/claude-code-action/base-action@5a856893345e332afa621934082d8c660c26d689 # v1.0.282
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           allowed_tools: "Bash,Read,Write,Edit,Glob,Grep"
