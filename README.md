@@ -205,6 +205,8 @@ jobs:
     secrets: inherit
 ```
 
+The project is named after the repository and its version is the branch name, with the default branch marked latest, so a repo is one project. Pull requests do not upload to Dependency Track (they still build and scan the SBoM). Versions uploaded before this change are named after commit SHAs and can be deleted by hand.
+
 A project with no `exposure:` tag is treated as public. Dependency Track applies tags when the project is created, so a tag added to an existing project may not appear until the audit (`dt-audit`) finds it and it is set by hand or by the sbom-scanner tag sync.
 
 ## What this isn't
