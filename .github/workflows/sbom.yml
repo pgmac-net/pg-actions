@@ -66,7 +66,7 @@ jobs:
     outputs:
       # The project UUID is not secret, so it survives job-output masking.
       # The URL is rebuilt from DT_HOST in the job that uses it.
-      dtrack-project-uuid: ${{ steps.dtrack-url.outputs.uuid }}
+      dtrack-project-uuid: ${{ steps.dtrack-upload.outputs.uuid }}
     timeout-minutes: 3
     permissions:
       id-token: write
@@ -125,6 +125,7 @@ jobs:
           fi
 
       - name: Upload SBoM to Dependency Track
+        id: dtrack-upload
         if: steps.dtrack-config.outputs.enabled == 'true'
         env:
           DT_HOST: ${{ secrets.DT_HOST }}
@@ -144,32 +145,21 @@ jobs:
               -H "X-Api-Key: ${DT_APIKEY}" \
               -H "Content-Type: application/json" \
               -d @- \
-              "https://${DT_HOST}/api/v1/bom"
+              "https://${DT_HOST}/api/v1/bom" > dtrack-upload.json
 
-      - name: Get DTrack project URL
-        id: dtrack-url
-        if: steps.dtrack-config.outputs.enabled == 'true'
-        env:
-          DT_HOST: ${{ secrets.DT_HOST }}
-          DT_APIKEY: ${{ secrets.DT_APIKEY }}
-          PROJECT_NAME: ${{ github.repository }}
-          PROJECT_VERSION: ${{ github.sha }}
-        run: |
-          # Best-effort: the upload above is what must succeed. A failed or empty
-          # lookup (wrong name, version not indexed yet) only drops the link.
-          PROJECT_UUID=$(curl -sf \
-            -H "X-Api-Key: ${DT_APIKEY}" \
-            "https://${DT_HOST}/api/v1/project/lookup?name=${PROJECT_NAME}&version=${PROJECT_VERSION}" \
-            | jq -r '.uuid // empty') || PROJECT_UUID=""
-          if [ -z "${PROJECT_UUID}" ]; then
-            echo "::warning title=Dependency Track lookup::Could not find the project for ${PROJECT_NAME} ${PROJECT_VERSION}; no project link will be shown."
-          else
+          # The upload response names the project. Use it rather than a project
+          # lookup, which can miss while Dependency Track is still processing the BOM.
+          # The UUID is not secret, so it is safe as a job output.
+          PROJECT_UUID=$(jq -r '.projectUuid // empty' dtrack-upload.json)
+          echo "uuid=${PROJECT_UUID}" >> "${GITHUB_OUTPUT}"
+          if [ -n "${PROJECT_UUID}" ]; then
             {
               echo "## Dependency Track"
               echo "[View project](https://${DT_HOST}/projects/${PROJECT_UUID})"
             } >> "${GITHUB_STEP_SUMMARY}"
+          else
+            echo "::warning title=Dependency Track::Upload response had no projectUuid; no project link will be shown."
           fi
-          echo "uuid=${PROJECT_UUID}" >> "${GITHUB_OUTPUT}"
 
   GHAS-dependency-scan:
     # GitHub-hosted: grype scan + PR comment, no homelab dependency. Hardcoded rather
