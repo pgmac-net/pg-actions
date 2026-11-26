@@ -186,6 +186,27 @@ A second job will then:
 - Scan the SBoM for any known vulnerabilities in your dependencies
 - Save the results (as a SARIF file) and upload to the GHAS Security tab of your repo, making the dependencies known vulnerabilities visible
 
+## Dependency Track project tags
+
+The Dependency Track project is tagged on upload so vulnerabilities can be prioritised by where the code runs (pgmac-net/homelabia#267):
+
+| Tag | Source |
+|---|---|
+| `source:repo` | always added |
+| `repo:<owner>/<name>` | always added |
+| `exposure:public` or `exposure:internal` | the `project-tags` input |
+
+```yaml
+jobs:
+  sbom:
+    uses: pgmac-net/pg-actions/.github/workflows/sbom.yml@<sha>
+    with:
+      project-tags: "exposure:public"
+    secrets: inherit
+```
+
+A project with no `exposure:` tag is treated as public. Dependency Track applies tags when the project is created, so a tag added to an existing project may not appear until the audit (`dt-audit`) finds it and it is set by hand or by the sbom-scanner tag sync.
+
 ## What this isn't
 
 This is not a SAST of your code, or the dependencies code.
