@@ -32,6 +32,11 @@ on:
         options:
           - self-hosted
         default: "self-hosted"
+      sbom-retention-days:
+        description: "Days to keep the sbom.json workflow artifact"
+        required: false
+        type: number
+        default: 7
   workflow_call:
     inputs:
       runs-on:
@@ -39,6 +44,11 @@ on:
         required: false
         type: string
         default: "self-hosted"
+      sbom-retention-days:
+        description: "Days to keep the sbom.json workflow artifact"
+        required: false
+        type: number
+        default: 7
     secrets:
       DT_HOST:
         required: true
@@ -67,6 +77,10 @@ jobs:
         with:
           persist-credentials: false
 
+      # sbom-action uploads the workflow artifact itself (it lands in the caller's run
+      # when this is used as a reusable workflow). Don't add a separate
+      # actions/upload-artifact step with the same name: its overwrite is
+      # delete-then-create and intermittently 409s against this upload (ansible#401).
       - name: Build the CycloneDX SBoM for this directory
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
@@ -75,6 +89,8 @@ jobs:
           output-file: sbom.json
           artifact-name: sbom.json
           upload-artifact: true
+          # push events have no inputs, so fall back to the default here too.
+          upload-artifact-retention: ${{ inputs.sbom-retention-days || 7 }}
           dependency-snapshot: true
 
       - name: Build the SHA256 digest
