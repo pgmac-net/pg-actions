@@ -37,6 +37,11 @@ on:
         required: false
         type: number
         default: 7
+      project-tags:
+        description: "Extra Dependency-Track project tags, comma separated (e.g. exposure:public)"
+        required: false
+        type: string
+        default: ""
   workflow_call:
     inputs:
       runs-on:
@@ -49,6 +54,11 @@ on:
         required: false
         type: number
         default: 7
+      project-tags:
+        description: "Extra Dependency-Track project tags, comma separated (e.g. exposure:public)"
+        required: false
+        type: string
+        default: ""
     secrets:
       DT_HOST:
         required: true
@@ -132,9 +142,13 @@ jobs:
           DT_APIKEY: ${{ secrets.DT_APIKEY }}
           PROJECT_NAME: ${{ github.repository }}
           PROJECT_VERSION: ${{ github.sha }}
-          PROJECT_TAGS: "${{ github.repository }}, ${{ github.ref_type }}, ${{ github.ref }}"
+          # source: and repo: tags classify the project for the CVE checker
+          # (pgmac-net/homelabia#267); the caller adds exposure:public or
+          # exposure:internal through project-tags. No exposure tag is treated as public.
+          PROJECT_TAGS: "${{ github.repository }}, ${{ github.ref_type }}, ${{ github.ref }}, source:repo, repo:${{ github.repository }}, ${{ inputs.project-tags }}"
         run: |
-          TAGS=$(printf '%s' "${PROJECT_TAGS}" | jq -Rc 'split(",") | map(gsub("^ +| +$"; "") | {name: .})')
+          # An empty project-tags input leaves a trailing comma: drop empty names.
+          TAGS=$(printf '%s' "${PROJECT_TAGS}" | jq -Rc 'split(",") | map(gsub("^ +| +$"; "")) | map(select(length > 0) | {name: .})')
           jq -n \
             --arg name "${PROJECT_NAME}" \
             --arg version "${PROJECT_VERSION}" \
