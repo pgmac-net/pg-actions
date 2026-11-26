@@ -124,12 +124,13 @@ jobs:
         env:
           DT_HOST: ${{ secrets.DT_HOST }}
         run: |
-          # Dependabot and fork PRs get no Actions secrets, so DT_HOST is empty there.
-          # Skip the Dependency Track steps for pull_request runs only. A missing
-          # secret on push or workflow_dispatch still fails the job.
-          if [ -z "${DT_HOST}" ] && [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+          # pull_request runs never upload: Dependency Track keeps one project per version,
+          # so a version per PR commit buries the repo's real project (pg-actions had 297).
+          # Only push and workflow_dispatch runs upload, and a missing secret there still
+          # fails the job.
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
             echo "enabled=false" >> "${GITHUB_OUTPUT}"
-            echo "::notice title=Dependency Track skipped::DT_HOST is not available to this pull_request run (Dependabot and fork PRs get no Actions secrets). The SBoM is uploaded on push to the default branch."
+            echo "::notice title=Dependency Track skipped::The SBoM is uploaded on push to the default branch, not for pull requests."
           else
             echo "enabled=true" >> "${GITHUB_OUTPUT}"
           fi
@@ -141,7 +142,10 @@ jobs:
           DT_HOST: ${{ secrets.DT_HOST }}
           DT_APIKEY: ${{ secrets.DT_APIKEY }}
           PROJECT_NAME: ${{ github.repository }}
-          PROJECT_VERSION: ${{ github.sha }}
+          # One project per branch, not per commit: the version is the branch name and the
+          # default branch is marked latest (pgmac-net/homelabia#291).
+          PROJECT_VERSION: ${{ github.ref_name }}
+          IS_LATEST: ${{ github.ref_name == github.event.repository.default_branch }}
           # source: and repo: tags classify the project for the CVE checker
           # (pgmac-net/homelabia#267); the caller adds exposure:public or
           # exposure:internal through project-tags. No exposure tag is treated as public.
@@ -152,9 +156,10 @@ jobs:
           jq -n \
             --arg name "${PROJECT_NAME}" \
             --arg version "${PROJECT_VERSION}" \
+            --argjson latest "${IS_LATEST}" \
             --argjson tags "${TAGS}" \
             --rawfile bom sbom.json \
-            '{projectName: $name, projectVersion: $version, autoCreate: true, bom: ($bom | ltrimstr("\ufeff") | @base64), projectTags: $tags}' \
+            '{projectName: $name, projectVersion: $version, isLatest: $latest, autoCreate: true, bom: ($bom | ltrimstr("\ufeff") | @base64), projectTags: $tags}' \
           | curl -sf -X PUT \
               -H "X-Api-Key: ${DT_APIKEY}" \
               -H "Content-Type: application/json" \
