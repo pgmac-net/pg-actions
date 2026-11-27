@@ -1,0 +1,172 @@
+name: Image SBOM
+
+# Build a CycloneDX SBoM of a container image by digest with trivy and upload it to
+# Dependency-Track as an image project, named the way the daily cluster scanner names them
+# (pgmac-net/sbom-scanner, homelabia#292), so the scanner skips digests CI already uploaded:
+#
+#   project name    the fully qualified image repository, e.g. macro.int.pgmac.net:5000/budgeteer
+#   project version <tag>@sha256:<digest>   (just @sha256:<digest> when there is no tag)
+#   tags            source:image, image:<repository>
+#
+# Exposure is not set here: the cluster scanner reads the Cloudflare tunnel and tags the project
+# exposure:public or exposure:internal on its next run.
+#
+# Public repositories also attest the image with its SBoM. Private repositories cannot use
+# attestations on the Team plan, so that step is skipped on repository visibility, like sbom.yml.
+#
+# Self-hosted by default: it pulls from the internal registry and uploads to the internal
+# Dependency-Track. No gating here: a caller decides what blocks a release. pgmac-net/pg-actions#202
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: "Fully qualified image repository without tag or digest, e.g. macro.int.pgmac.net:5000/budgeteer"
+        required: true
+        type: string
+      digest:
+        description: "Image digest, sha256:<64 hex> (the digest output of docker/build-push-action)"
+        required: true
+        type: string
+      tag:
+        description: "Image tag, used in the Dependency-Track version"
+        required: false
+        type: string
+        default: ""
+      runs-on:
+        description: "Runner label. Must reach the registry and Dependency-Track."
+        required: false
+        type: string
+        default: "self-hosted"
+      insecure-registry:
+        description: "Skip TLS verification for the registry (trivy --insecure)"
+        required: false
+        type: boolean
+        default: false
+      sbom-retention-days:
+        description: "Days to keep the SBoM artefact"
+        required: false
+        type: number
+        default: 7
+    secrets:
+      DT_HOST:
+        required: true
+      DT_APIKEY:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  image-sbom:
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 30
+    permissions:
+      id-token: write # attestation (public repositories)
+      attestations: write
+      contents: read
+    steps:
+      - name: Check the inputs
+        env:
+          IMAGE: ${{ inputs.image }}
+          DIGEST: ${{ inputs.digest }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          # The values reach a shell and an API body: accept only well-formed references.
+          if ! printf '%s' "${IMAGE}" | grep -Eq '^[a-z0-9][a-z0-9.-]*(:[0-9]+)?(/[a-z0-9][a-z0-9._-]*)+$'; then
+            echo "::error title=image::not a fully qualified image repository: ${IMAGE}"; exit 1
+          fi
+          if ! printf '%s' "${DIGEST}" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
+            echo "::error title=digest::not a sha256 digest: ${DIGEST}"; exit 1
+          fi
+          if [ -n "${TAG}" ] && ! printf '%s' "${TAG}" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$'; then
+            echo "::error title=tag::not a valid image tag: ${TAG}"; exit 1
+          fi
+
+      - name: Install trivy
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+        with:
+          # Pinned to the version of the cluster scanner image, so both produce the same BOM.
+          version: v0.76.2
+
+      - name: Build the CycloneDX SBoM of the image
+        env:
+          IMAGE: ${{ inputs.image }}
+          DIGEST: ${{ inputs.digest }}
+          INSECURE: ${{ inputs.insecure-registry }}
+          # SBoM only: Dependency-Track does the vulnerability analysis. The Java DB is still
+          # fetched: trivy refuses to skip it on a first run, and needs it to identify JARs.
+          TRIVY_SKIP_DB_UPDATE: "true"
+        run: |
+          flags=""
+          if [ "${INSECURE}" = "true" ]; then flags="--insecure"; fi
+          # shellcheck disable=SC2086
+          trivy image --quiet ${flags} --format cyclonedx --timeout 15m \
+            --output image-sbom-raw.json -- "${IMAGE}@${DIGEST}"
+
+      - name: Drop duplicate components
+        run: |
+          # trivy can emit exact duplicates; Dependency-Track 5 rejects them with 400
+          # "must have only unique items" (CycloneDX uniqueItems).
+          jq -c '
+            .components |= ((. // []) | unique)
+            | .dependencies |= ((. // []) | map(if .dependsOn then .dependsOn |= unique else . end) | unique)
+          ' image-sbom-raw.json > image-sbom.json
+          echo "components: $(jq '.components | length' image-sbom.json)"
+
+      - name: Keep the SBoM as an artefact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-sbom.json
+          path: image-sbom.json
+          retention-days: ${{ inputs.sbom-retention-days }}
+
+      - name: Attest the image with its SBoM
+        if: github.event.repository.visibility == 'public'
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-name: ${{ inputs.image }}
+          subject-digest: ${{ inputs.digest }}
+          sbom-path: image-sbom.json
+          show-summary: true
+          # The registry is internal: record the attestation on GitHub only.
+          push-to-registry: false
+
+      - name: Upload the SBoM to Dependency-Track
+        # Pull requests build and check the image, but only push, tag and dispatch runs upload:
+        # a version per PR build would bury the image's real versions (pg-actions had 297).
+        if: github.event_name != 'pull_request'
+        id: dtrack-upload
+        env:
+          DT_HOST: ${{ secrets.DT_HOST }}
+          DT_APIKEY: ${{ secrets.DT_APIKEY }}
+          IMAGE: ${{ inputs.image }}
+          DIGEST: ${{ inputs.digest }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          jq -n \
+            --arg name "${IMAGE}" \
+            --arg version "${TAG}@${DIGEST}" \
+            --arg tag_image "image:${IMAGE}" \
+            --rawfile bom image-sbom.json \
+            '{projectName: $name, projectVersion: $version, isLatest: true, isActive: true, autoCreate: true,
+              projectTags: [{name: "source:image"}, {name: $tag_image}],
+              bom: ($bom | ltrimstr("\ufeff") | @base64)}' \
+          | curl -sf -X PUT \
+              -H "X-Api-Key: ${DT_APIKEY}" \
+              -H "Content-Type: application/json" \
+              -d @- \
+              "https://${DT_HOST}/api/v1/bom" > dtrack-upload.json
+
+          # The upload response names the project; a lookup can miss while DT still processes the BOM.
+          PROJECT_UUID=$(jq -r '.projectUuid // empty' dtrack-upload.json)
+          {
+            echo "## Image SBoM"
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Image | \`${IMAGE}\` |"
+            echo "| Version | \`${TAG}@${DIGEST}\` |"
+            if [ -n "${PROJECT_UUID}" ]; then
+              echo "| Dependency-Track | [project](https://${DT_HOST}/projects/${PROJECT_UUID}) |"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
