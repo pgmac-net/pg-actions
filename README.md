@@ -209,6 +209,58 @@ The project is named after the repository and its version is the branch name, wi
 
 A project with no `exposure:` tag is treated as public. Dependency Track applies tags when the project is created, so a tag added to an existing project may not appear until the audit (`dt-audit`) finds it and it is set by hand or by the sbom-scanner tag sync.
 
+# image-sbom
+
+A reusable workflow that builds a CycloneDX SBoM of a **container image, by digest**, with trivy and uploads it to Dependency Track as an image project (pgmac-net/pg-actions#202). It does not replace `sbom.yml`, which scans a directory.
+
+It names the project the way the daily cluster scanner does (pgmac-net/sbom-scanner), so the scanner skips a digest CI already uploaded:
+
+| | |
+|---|---|
+| Project name | the fully qualified image repository, e.g. `macro.int.pgmac.net:5000/budgeteer` |
+| Project version | `<tag>@sha256:<digest>` (`@sha256:<digest>` with no tag) |
+| Tags | `source:image`, `image:<repository>`. Exposure is set by the cluster scanner from the Cloudflare tunnel |
+
+```yaml
+jobs:
+  build:
+    runs-on: self-hosted
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - id: push
+        uses: docker/build-push-action@<sha>
+        with: ...
+
+  image-sbom:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    uses: pgmac-net/pg-actions/.github/workflows/image-sbom.yml@<sha>
+    with:
+      image: macro.int.pgmac.net:5000/budgeteer
+      digest: ${{ needs.build.outputs.digest }}
+      tag: ${{ github.ref_name }}
+    permissions:
+      id-token: write
+      attestations: write
+      contents: read
+    secrets: inherit
+```
+
+| Input | Default | |
+|---|---|---|
+| `image` | required | Fully qualified repository, no tag or digest |
+| `digest` | required | `sha256:<64 hex>`, the `digest` output of `docker/build-push-action` |
+| `tag` | empty | Used in the Dependency Track version |
+| `runs-on` | `self-hosted` | Must reach the registry and Dependency Track |
+| `insecure-registry` | `false` | trivy `--insecure` for a registry with an untrusted certificate |
+| `sbom-retention-days` | `7` | Artefact retention |
+
+- **Pull requests** build and check the SBoM but never upload (as `sbom.yml`).
+- **Public repositories** also attest the image with its SBoM (`actions/attest-sbom`, recorded on GitHub only). The step runs when `github.event.repository.visibility == 'public'`; in a reusable workflow that is the *caller's* repository, so private repositories skip it with no configuration.
+- **No gating.** The workflow records the SBoM and never fails on findings; a caller decides what blocks a release (run a trivy vulnerability scan as a separate job).
+- trivy is pinned to the version in the cluster scanner image, so both produce the same BOM, and exact duplicate components are dropped (Dependency Track 5 rejects them).
+
 ## What this isn't
 
 This is not a SAST of your code, or the dependencies code.
